@@ -1,0 +1,78 @@
+[
+  {
+    "uid": "1001",
+    "canonicalurl": "https://openagenda.com/test/events/1001",
+    "title_fr": "Concert de jazz au Lieu Unique",
+    "description_fr": "Une soirée à ne pas manquer.",
+    "longdescription_fr": "<p>Soirée <strong>jazz</strong> &amp; blues.</p><p></p><p>Entrée&nbsp;libre.</p>",
+    "conditions_fr": "Gratuit",
+    "keywords_fr": [
+      "musique",
+      "jazz"
+    ],
+    "updatedat": "2026-08-01T10:00:00+02:00",
+    "daterange_fr": "Samedi 3 octobre, 20h00",
+    "firstdate_begin": "2026-10-03T20:00:00+02:00",
+    "lastdate_end": "2026-10-03T23:00:00+02:00",
+    "timings": [
+      {
+        "begin": "2026-10-03T20:00:00+02:00",
+        "end": "2026-10-03T23:00:00+02:00"
+      }
+    ],
+    "location_coordinates": {
+      "lon": -1.5536,
+      "lat": 47.2184
+    },
+    "location_name": "Le Lieu Unique",
+    "location_address": "2 rue de la Biscuiterie",
+    "location_postalcode": "44000",
+    "location_city": "Nantes",
+    "location_department": "Loire-Atlantique",
+    "location_region": "Pays de la Loire",
+    "location_countrycode": "FR",
+    "attendancemode": "{\"id\": 1, \"label\": {\"fr\": \"Sur place\", \"en\": \"In situ\"}}",
+    "status": {
+      "id": 1,
+      "label": {
+        "fr": "Programmé"
+      }
+    },
+    "age_min": null,
+    "age_max": null,
+    "originagenda_title": "Nantes Métropole"
+  },
+  {
+    "uid": "1002",
+    "canonicalurl": "https://openagenda.com/test/events/1002",
+    "title_fr": "Exposition Jules Verne",
+    "description_fr": "Une soirée à ne pas manquer.",
+    "longdescription_fr": "<p>Concert en plein air.</p>",
+    "conditions_fr": "Gratuit",
+    "keywords_fr": null,
+    "updatedat": "2026-08-01T10:00:00+02:00",
+    "daterange_fr": "Samedi 3 octobre, 20h00",
+    "firstdate_begin": "2026-01-15T10:00:00+01:00",
+    "lastdate_end": "2026-03-30T18:00:00+02:00",
+    "timings": null,
+    "location_coordinates": {
+      "lon": -1.56,
+      "lat": 47.21
+    },
+    "location_name": "Musée Jules Verne",
+    "location_address": "2 rue de la Biscuiterie",
+    "location_postalcode": "44000",
+    "location_city": "Nantes",
+    "location_department": "Loire-Atlantique",
+    "location_region": "Pays de la Loire",
+    "location_countrycode": "FR",
+    "attendancemode": {
+      "id": 1,
+      "label": "Sur place"
+    },
+    "status": "{\"id\": 1, \"label\": {\"fr\": \"Programmé\", \"en\": \"Scheduled\"}}",
+    "age_min": null,
+    "age_max": null,
+    "originagenda_title": "Nantes Métropole"
+  }
+]

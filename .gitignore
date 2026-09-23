@@ -1,0 +1,24 @@
+# Environnements virtuels
+venv/
+.venv/
+env/
+
+# Secrets : ne JAMAIS versionner
+.env
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Données volumineuses (reconstruites par les scripts)
+data/raw/
+data/processed/
+data/index/
+*.csv
+# ... sauf les petits fichiers de test
+!tests/fixtures/*.csv
+
+# Divers
+.DS_Store
+.ipynb_checkpoints/

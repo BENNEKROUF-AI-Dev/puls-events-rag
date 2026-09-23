@@ -1,0 +1,28 @@
+# ---- Puls-Events RAG POC : dépendances testées ensemble (Python 3.11 / 3.12) ----
+# Données
+pandas==3.0.5
+requests==2.34.2
+beautifulsoup4==4.15.0
+python-dotenv==1.2.3
+
+# RAG : vectorisation, index, LLM
+faiss-cpu==1.15.1
+langchain==1.4.1
+langchain-core==1.6.3
+langchain-text-splitters==1.1.2
+# < 0.4 obligatoire : ragas 0.4.3 importe un module supprimé dans langchain-community 0.4
+langchain-community==0.3.31
+langchain-mistralai==1.1.6
+# < 2 obligatoire : instructor (dépendance de ragas) est incompatible avec mistralai 2.x
+mistralai==1.12.4
+
+# API
+fastapi==0.141.1
+uvicorn[standard]==0.53.0
+
+# Évaluation et tests
+ragas==0.4.3
+instructor==1.17.0
+openai==2.9.0
+pytest==9.1.1
+httpx==0.28.1
