@@ -4,6 +4,8 @@ Les embeddings utilisés sont déterministes (voir conftest.HashingEmbeddings) :
 deux textes qui partagent des mots donnent des vecteurs proches. On peut donc
 vérifier que la recherche remonte le bon événement.
 """
+from datetime import date
+
 import pandas as pd
 import pytest
 
@@ -117,3 +119,61 @@ class TestQuasiDoublons:
         store, _ = build_index(avec_doublon, embeddings, describe("test"), index_dir=tmp_path)
         titres = [doc.metadata["title"] for doc, _ in search(store, jumeau["title"], k=5)]
         assert titres.count(jumeau["title"]) == 1
+
+
+class TestFiltreEvenementsAVenir:
+    """Le filtre ne doit pas appauvrir les résultats, même si peu d'événements passent."""
+
+    def _index_avec_un_seul_evenement_a_venir(self, events, embeddings, tmp_path):
+        passes = []
+        for numero in range(60):          # 60 événements terminés depuis longtemps
+            evenement = events.iloc[0].to_dict()
+            evenement.update(uid=f"P{numero}", title=f"Concert de jazz numéro {numero}",
+                             date_begin="2025-10-01T20:00:00+02:00",
+                             date_end="2025-10-01T23:00:00+02:00")
+            passes.append(evenement)
+        a_venir = events.iloc[0].to_dict()
+        a_venir.update(uid="FUTUR", title="Concert de jazz au Lieu Unique",
+                       date_begin="2026-12-01T20:00:00+01:00",
+                       date_end="2026-12-01T23:00:00+01:00")
+        corpus = pd.DataFrame(passes + [a_venir])
+        store, _ = build_index(corpus, embeddings, describe("test"), index_dir=tmp_path)
+        return store
+
+    def test_trouve_l_evenement_a_venir_noye_parmi_les_passes(self, events, embeddings, tmp_path):
+        store = self._index_avec_un_seul_evenement_a_venir(events, embeddings, tmp_path)
+        results = search(store, "concert de jazz", k=5, only_upcoming=True,
+                         reference_date=date(2026, 9, 24))
+        assert [doc.metadata["uid"] for doc, _ in results] == ["FUTUR"]
+
+    def test_sans_filtre_les_passes_remontent(self, events, embeddings, tmp_path):
+        store = self._index_avec_un_seul_evenement_a_venir(events, embeddings, tmp_path)
+        assert len(search(store, "concert de jazz", k=5)) == 5
+
+
+class TestEvenementLong:
+    """Un événement à la description longue ne doit pas monopoliser les résultats."""
+
+    def test_les_autres_evenements_restent_visibles(self, embeddings, tmp_path):
+        commun = dict(conditions="", keywords=[], status="Programmé", address="",
+                      postal_code="44000", location_name="Salle", city="Nantes")
+        bavard = {**commun, "uid": "LONG", "title": "Concert de musique classique",
+                  "description": "Concert de musique classique",
+                  "long_description": "Programme de musique classique, orchestre et solistes. " * 400,
+                  "date_begin": "2026-12-01T20:00:00+01:00", "date_end": "2026-12-01T23:00:00+01:00",
+                  "url": "https://openagenda.com/test/events/long"}
+        autres = [{**commun, "uid": f"A{i}", "title": f"Concert symphonique numéro {i}",
+                   "description": "Musique classique et orchestre",
+                   "long_description": "Un concert d'orchestre.",
+                   "date_begin": "2026-11-10T20:00:00+01:00", "date_end": "2026-11-10T22:00:00+01:00",
+                   "url": f"https://openagenda.com/test/events/{i}"} for i in range(20)]
+
+        store, info = build_index(pd.DataFrame([bavard] + autres), embeddings,
+                                  describe("test"), index_dir=tmp_path)
+        assert info["nombre_documents"] > 21, "l'événement bavard doit bien être découpé"
+
+        results = search(store, "concert de musique classique", k=5, only_upcoming=True,
+                         reference_date=date(2026, 9, 24))
+        uids = [doc.metadata["uid"] for doc, _ in results]
+        assert len(uids) == 5 and len(set(uids)) == 5
+        assert uids[0] == "LONG"

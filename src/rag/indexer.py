@@ -143,17 +143,43 @@ def search(
         today = (reference_date or config.reference_date()).isoformat()
         filter_fn = lambda meta: str(meta.get("date_end", ""))[:10] >= today  # noqa: E731
 
-    results = store.similarity_search_with_score(
-        query, k=k * 3 if dedupe else k, filter=filter_fn, fetch_k=max(k * 20, 100))
-    if not dedupe:
-        return results
+    # Faiss filtre APRÈS avoir cherché : il examine `fetch_k` documents, écarte ceux
+    # qui ne passent pas le filtre, puis tronque. Deux effets à corriger :
+    #   - sur un grand index où peu d'événements sont à venir, une fenêtre fixe ne
+    #     laisse presque rien ;
+    #   - un événement à la description longue occupe plusieurs morceaux et peut à lui
+    #     seul remplir les résultats, masquant les autres événements.
+    # On élargit donc la recherche tant qu'il manque des événements DISTINCTS.
+    fetch_k = max(k * 20, 100)
+    candidates = k if not dedupe else max(k * 10, 50)
+    results: list[tuple[Document, float]] = []
+
+    while True:
+        raw = store.similarity_search_with_score(query, k=candidates, filter=filter_fn, fetch_k=fetch_k)
+        results = _keep_one_per_event(raw) if dedupe else raw
+        exhausted = fetch_k >= store.index.ntotal and candidates >= store.index.ntotal
+        if len(results) >= k or exhausted or not raw:
+            break
+        fetch_k = min(max(fetch_k * 5, 500), store.index.ntotal)
+        candidates = min(candidates * 4, store.index.ntotal)
+
+    return results[:k]
+
+
+def _keep_one_per_event(results: list[tuple[Document, float]]) -> list[tuple[Document, float]]:
+    """Un seul résultat par événement, quasi-doublons d'Open Agenda compris.
+
+    Deux fiches distinctes pour le même spectacle, au même endroit le même jour mais
+    avec un nom de lieu écrit autrement, sont fusionnées : elles gaspilleraient une
+    place parmi les fiches envoyées au LLM.
+    """
     best: dict[tuple[str, str], tuple[Document, float]] = {}
     for doc, score in results:
         key = (normalize_title_key(doc.metadata.get("title", "")),
                str(doc.metadata.get("date_begin", ""))[:10])
         if key not in best:
             best[key] = (doc, score)
-    return list(best.values())[:k]
+    return list(best.values())
 
 
 def format_results(results: list[tuple[Document, float]]) -> str:

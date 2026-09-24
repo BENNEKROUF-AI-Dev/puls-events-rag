@@ -288,3 +288,19 @@ mots-clés, type BM25), ou filtre par mots-clés en amont.
 avec un nom de lieu orthographié différemment : elles échappaient au dédoublonnage du
 nettoyage. La recherche fusionne désormais les résultats partageant le même titre et la
 même date de début, pour ne pas gaspiller une place dans les fiches envoyées au LLM.
+
+**Deuxième correction : le filtre « à venir » appauvrissait les résultats.** Faiss filtre
+*après* avoir cherché : il examine une fenêtre de `fetch_k` documents, puis écarte ceux qui
+ne passent pas le filtre. Avec une fenêtre fixe de 100 documents sur un index de 14 815, et
+seulement 17 % d'événements à venir, une question sur les concerts ne renvoyait plus qu'un
+seul résultat au lieu de cinq. La fenêtre est désormais élargie progressivement jusqu'à
+obtenir assez de candidats, ou jusqu'à avoir parcouru tout l'index. Un test reproduit le cas
+limite : un seul événement à venir noyé parmi soixante événements passés très similaires.
+
+**Troisième correction : un événement bavard masquait les autres.** Faiss tronque les
+résultats avant que le dédoublonnage ne s'applique. Un événement à la description longue,
+découpé en une dizaine de morceaux tous pertinents, remplissait donc à lui seul la liste :
+après fusion, il ne restait qu'un seul événement à proposer. La recherche compte désormais
+les événements **distincts** et élargit la fenêtre tant qu'il en manque. Test associé :
+un événement de 400 phrases face à vingt événements comparables, la recherche doit
+renvoyer cinq événements différents.
