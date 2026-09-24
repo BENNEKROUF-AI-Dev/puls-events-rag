@@ -18,9 +18,12 @@ DATA_DIR = ROOT_DIR / "data"
 RAW_DIR = DATA_DIR / "raw"
 PROCESSED_DIR = DATA_DIR / "processed"
 
+INDEX_DIR = DATA_DIR / "index"
+
 DEFAULT_CSV_PATH = RAW_DIR / "evenements-publics-openagenda.csv"
 PROCESSED_EVENTS_PATH = PROCESSED_DIR / "events.jsonl"
 CLEANING_REPORT_PATH = PROCESSED_DIR / "cleaning_report.json"
+INDEX_INFO_PATH = INDEX_DIR / "index_info.json"
 
 # --- Périmètre du POC ---------------------------------------------------------
 # Département choisi : Loire-Atlantique (Nantes, Saint-Nazaire...).
@@ -58,6 +61,34 @@ CITY_ALIASES = {
     "SUCE SUR ERDRE": "Sucé-sur-Erdre",
     "Dunkirk": "Dunkerque",  # rencontré dans le Nord (nom anglais)
 }
+
+# --- Découpage en chunks ------------------------------------------------------
+# 1 200 caractères ~ 300 mots : assez pour une description complète d'événement,
+# assez court pour que la recherche reste précise.
+CHUNK_SIZE = 1200
+CHUNK_OVERLAP = 150
+
+# --- Embeddings ---------------------------------------------------------------
+# « local » (par défaut, gratuit, sans limite de débit) ou « mistral » (API).
+EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "local")
+LOCAL_EMBEDDING_MODEL = os.getenv(
+    "LOCAL_EMBEDDING_MODEL", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+)
+MISTRAL_EMBEDDING_MODEL = os.getenv("MISTRAL_EMBEDDING_MODEL", "mistral-embed")
+EMBEDDING_BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", "64"))
+
+# --- Génération (LLM) ---------------------------------------------------------
+# mistral-small : rapide et peu coûteux, largement suffisant pour reformuler
+# des fiches d'événements. mistral-large-latest pour comparer la qualité.
+LLM_MODEL = os.getenv("LLM_MODEL", "mistral-small-latest")
+
+# --- Recherche ----------------------------------------------------------------
+TOP_K = int(os.getenv("TOP_K", "5"))
+
+
+def mistral_api_key() -> str | None:
+    return os.getenv("MISTRAL_API_KEY")
+
 
 # --- Source OpenAgenda (API Opendatasoft / Huwise, Explore v2.1) -------------
 OPENDATASOFT_DATASET_URL = (

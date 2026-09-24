@@ -25,18 +25,28 @@ puls-events-rag/
 ├── src/rag/                # logique métier, importée par les scripts et l'API
 │   ├── config.py           # tous les paramètres (zone, fenêtre, filtres, chemins)
 │   ├── fetch_events.py     # récupération OpenAgenda (API ou export CSV)
-│   └── preprocess.py       # nettoyage et structuration des événements
+│   ├── preprocess.py       # nettoyage et structuration des événements
+│   ├── chunking.py         # événements -> documents à vectoriser
+│   ├── embeddings.py       # choix du modèle d'embeddings (local / mistral / test)
+│   ├── indexer.py          # construction, sauvegarde et interrogation de l'index Faiss
+│   └── chain.py            # le chatbot : recherche + prompt + génération Mistral
 ├── scripts/
 │   ├── check_env.py        # vérification de l'installation
-│   └── fetch_data.py       # récupère + nettoie + sauvegarde les événements
+│   ├── fetch_data.py       # récupère + nettoie + sauvegarde les événements
+│   ├── build_index.py      # construit la base vectorielle Faiss
+│   └── ask.py              # pose une question au chatbot depuis le terminal
 ├── tests/
 │   ├── fixtures/           # petits jeux de données de test (15 événements fictifs)
 │   ├── test_preprocess.py  # règles de nettoyage
 │   ├── test_fetch_events.py# récupération (API simulée, CSV)
+│   ├── test_chunking.py    # découpage et métadonnées
+│   ├── test_indexer.py     # index Faiss et recherche
+│   ├── test_chain.py       # chaîne RAG (LLM simulé)
 │   └── test_data_quality.py# contrôles sur les vraies données produites
 ├── data/                   # non versionné, reconstruit par les scripts
 │   ├── raw/                # données brutes (réponse API ou export CSV)
-│   └── processed/          # events.jsonl + cleaning_report.json
+│   ├── processed/          # events.jsonl + cleaning_report.json
+│   └── index/              # index Faiss + index_info.json
 ├── docs/
 │   └── journal.md          # décisions et anomalies (matière du rapport)
 ├── .env.example            # modèle de configuration
@@ -112,13 +122,52 @@ Le script affiche ce que chaque règle de nettoyage a retiré et écrit :
 - `data/processed/events.jsonl` : un événement propre par ligne ;
 - `data/processed/cleaning_report.json` : le rapport chiffré du nettoyage.
 
-Pour l'export CSV : le télécharger sur le [portail OpenAgenda d'Opendatasoft](https://public.opendatasoft.com/explore/dataset/evenements-publics-openagenda/)
+La source par défaut est l'API : rien à télécharger. Le mode `--source csv` sert de secours hors ligne ;
+il faut alors télécharger l'export sur le [portail OpenAgenda d'Opendatasoft](https://public.opendatasoft.com/explore/dataset/evenements-publics-openagenda/)
 (onglet Export, format CSV) et l'enregistrer sous `data/raw/evenements-publics-openagenda.csv`.
+Attention : cet export peut n'être qu'un échantillon (4 296 événements contre 15 925 via l'API).
 
-Résultat au 19/09/2026 : **1 061 événements** en Loire-Atlantique, dont 244 à venir.
+Résultat au 23/09/2026 via l'API : **12 730 événements** en Loire-Atlantique, dont 2 207 à venir.
 Le détail des filtres et des anomalies corrigées est dans [`docs/journal.md`](docs/journal.md).
 
-### 2. Construire l'index, lancer l'API, Docker *(à venir)*
+### 2. Construire la base vectorielle
+
+```bash
+python scripts/build_index.py                    # embeddings locaux (défaut)
+python scripts/build_index.py --provider mistral # via l'API mistral-embed
+python scripts/build_index.py --provider test --limit 200   # essai instantané, sans modèle
+```
+
+Le premier lancement en mode local télécharge le modèle (~220 Mo), puis tout se passe
+hors ligne. Comptez quelques minutes pour l'ensemble des événements.
+
+Le script écrit `data/index/` (index Faiss, documents et `index_info.json`), affiche la
+fiche technique de l'index et joue trois questions de contrôle pour vérifier que la
+recherche renvoie des résultats cohérents.
+
+Trois fournisseurs d'embeddings sont disponibles :
+
+| Fournisseur | Modèle | Dimensions | Coût | Usage |
+|---|---|---:|---|---|
+| `local` (défaut) | paraphrase-multilingual-MiniLM-L12-v2 (ONNX) | 384 | gratuit | construction et démo, sans limite de débit |
+| `mistral` | mistral-embed | 1024 | payant | comparaison, cohérence avec la stack imposée |
+| `test` | hachage déterministe | 128 | gratuit | tests automatiques, vérification hors ligne |
+
+### 3. Interroger le chatbot
+
+```bash
+python scripts/ask.py "quels concerts de jazz à Nantes ?"
+python scripts/ask.py --retrieval-only "expositions pour enfants"   # sans appeler le LLM
+python scripts/ask.py                                               # mode interactif
+```
+
+Par défaut, seuls les **événements à venir** sont proposés (2 207 sur 12 730) :
+recommander une sortie déjà passée n'aurait aucun sens. `--all-dates` lève ce filtre.
+
+La logique est dans la classe `RAGService` (`src/rag/chain.py`), qui expose
+`ask()`, `retrieve()` et `health()`. L'API de l'étape suivante ne fera que l'importer.
+
+### 4. API, Docker *(à venir)*
 
 ## Tests
 
@@ -127,8 +176,9 @@ pytest            # tous les tests
 pytest -v tests/test_preprocess.py
 ```
 
-- `test_preprocess.py` et `test_fetch_events.py` tournent sans Internet ni clé API
-  (l'API OpenAgenda est simulée).
+- `test_preprocess.py`, `test_fetch_events.py`, `test_chunking.py` et `test_indexer.py`
+  tournent sans Internet, sans clé API et sans modèle : l'API OpenAgenda est simulée et
+  les embeddings sont déterministes.
 - `test_data_quality.py` vérifie les vraies données produites par `fetch_data.py`
   (zone, période, doublons, champs vides, HTML) ; il est ignoré tant qu'elles n'existent pas.
 

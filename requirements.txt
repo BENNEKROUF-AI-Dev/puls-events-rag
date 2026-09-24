@@ -16,6 +16,9 @@ langchain-mistralai==1.1.6
 # < 2 obligatoire : instructor (dépendance de ragas) est incompatible avec mistralai 2.x
 mistralai==1.12.4
 
+# Embeddings locaux (ONNX, sans PyTorch : ~150 Mo au lieu de ~2 Go)
+fastembed==0.8.1
+
 # API
 fastapi==0.141.1
 uvicorn[standard]==0.53.0
