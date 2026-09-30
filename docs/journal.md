@@ -304,3 +304,33 @@ après fusion, il ne restait qu'un seul événement à proposer. La recherche co
 les événements **distincts** et élargit la fenêtre tant qu'il en manque. Test associé :
 un événement de 400 phrases face à vingt événements comparables, la recherche doit
 renvoyer cinq événements différents.
+
+### Mode dégradé quand le LLM est indisponible
+
+L'offre gratuite de Mistral renvoie régulièrement des erreurs `429` (limite de débit).
+Plutôt que de laisser remonter une erreur technique, le service attrape l'échec de l'appel
+et renvoie les **événements trouvés** avec leurs dates, lieux et liens, précédés d'une phrase
+expliquant que la rédaction est momentanément indisponible. La recherche vectorielle ayant
+déjà fait son travail, l'utilisateur obtient une réponse utile ; le champ `llm_disponible`
+signale l'état au reste du système.
+
+Trois causes d'échec sont traduites en langage clair : limite de débit (429), clé refusée
+(401), service injoignable (timeout). Cette gestion d'erreur sera reprise telle quelle par
+l'endpoint `/ask` de l'API à l'étape 5, où la robustesse est un point de vigilance explicite.
+
+### Premier test de bout en bout : une date inventée
+
+Premier appel réel au LLM (`ministral-3b-latest`, seul modèle accessible sur le compte, les
+autres renvoyant `429`). La réponse est correctement rédigée, cite de vrais événements et
+leurs liens, en 3,65 s. Mais elle contient **une date fausse** : « Beethoven et compagnie »
+est annoncé au 20/11/2026 alors que la fiche indique le 10 novembre 2026. Deux autres
+défauts : la réponse commence par affirmer qu'aucun concert classique n'est prévu avant d'en
+citer deux, et trois sources pertinentes sur cinq sont ignorées.
+
+Corrections apportées : température ramenée de 0,2 à **0** (la tâche est de restituer des
+fiches, pas d'inventer), et deux règles ajoutées au prompt — recopier dates, titres et lieux
+mot pour mot, et ne pas annoncer une absence de résultat quand les fiches en contiennent.
+
+Enseignement pour l'étape 5 : sans mesure automatique, ce genre d'erreur passe inaperçu.
+C'est exactement ce que mesure la métrique *faithfulness* de Ragas. Le jeu de test annoté
+devra contenir des questions dont la réponse attendue comporte une date précise.

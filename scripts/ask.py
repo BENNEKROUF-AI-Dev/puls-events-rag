@@ -34,7 +34,8 @@ def answer(service: RAGService, question: str, args: argparse.Namespace) -> None
         return
     result = service.ask(question, k=args.k)
     print(f"\n{result['answer']}\n")
-    print(f"-- {len(result['sources'])} source(s), {result['duree_secondes']} s --")
+    etat = "" if result.get("llm_disponible", True) else " [mode dégradé : réponse non rédigée]"
+    print(f"-- {len(result['sources'])} source(s), {result['duree_secondes']} s{etat} --")
     for source in result["sources"]:
         print(f"   [{source['score']}] {source['titre']} — {source['ville']}, {source['date']}")
 

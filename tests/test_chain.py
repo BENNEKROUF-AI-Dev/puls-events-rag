@@ -48,6 +48,7 @@ class TestFormatContext:
         system = messages[0].content
         assert "UNIQUEMENT à partir des fiches" in system
         assert "N'invente jamais" in system
+        assert "RECOPIE les dates" in system      # garde-fou contre les dates inventées
         assert "19/09/2026" in system
 
 
@@ -114,3 +115,36 @@ class TestHealth:
         service._llm = None
         with pytest.raises(RuntimeError, match="MISTRAL_API_KEY"):
             _ = service.llm
+
+
+class TestModeDegrade:
+    """Si Mistral est indisponible, l'utilisateur reçoit quand même les événements."""
+
+    class LLMEnPanne:
+        def invoke(self, messages):
+            raise RuntimeError(
+                "Error response 429 while fetching https://api.mistral.ai/v1/chat/completions: "
+                '{"message":"Rate limit exceeded","type":"rate_limited"}')
+
+    def test_la_reponse_liste_les_evenements_trouves(self, events, embeddings, tmp_path):
+        from rag.indexer import build_index
+        build_index(events, embeddings, describe("test"), index_dir=tmp_path)
+        service = RAGService(provider="test", llm=self.LLMEnPanne(), index_dir=tmp_path,
+                             only_upcoming=False)
+
+        result = service.ask("un concert de jazz", reference_date=REF_DATE)
+
+        assert result["llm_disponible"] is False
+        assert "limite de débit" in result["answer"]
+        assert result["sources"], "les sources restent disponibles"
+        assert result["sources"][0]["titre"] in result["answer"]
+        assert "https://openagenda.com/" in result["answer"]
+
+    def test_raison_lisible_par_type_d_erreur(self):
+        from rag.chain import describe_llm_error
+        assert describe_llm_error(RuntimeError("429 Rate limit")) == "limite de débit de l'API atteinte"
+        assert describe_llm_error(RuntimeError("401 Unauthorized")) == "clé d'API refusée"
+        assert describe_llm_error(RuntimeError("Connection timeout")) == "service injoignable"
+
+    def test_reponse_normale_marquee_disponible(self, service):
+        assert service.ask("concert", reference_date=REF_DATE)["llm_disponible"] is True

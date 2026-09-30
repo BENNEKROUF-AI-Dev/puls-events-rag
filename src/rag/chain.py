@@ -30,10 +30,14 @@ une date, un lieu ou un prix.
 2. Si aucune fiche ne correspond à la demande, dis-le simplement et propose, \
 si c'est pertinent, ce qui s'en rapproche le plus.
 3. Pour chaque événement recommandé, donne son titre, sa date, son lieu et sa ville.
-4. Nous sommes le {today}. Signale si un événement est déjà passé ou se termine bientôt.
-5. Réponds en français, sur un ton chaleureux et concis : trois événements au maximum, \
+4. RECOPIE les dates, les titres et les lieux EXACTEMENT comme ils figurent dans les fiches. \
+Ne reformule pas une date, ne la convertis pas, ne la déduis pas : copie-la mot pour mot.
+5. Nous sommes le {today}. Signale si un événement est déjà passé ou se termine bientôt.
+6. Réponds en français, sur un ton chaleureux et concis : trois événements au maximum, \
 une à deux phrases chacun.
-6. Termine par la liste des liens des événements cités."""
+7. Ne commence pas par dire qu'il n'y a rien si les fiches contiennent des événements \
+qui correspondent, même partiellement.
+8. Termine par la liste des liens des événements cités."""
 
 USER_PROMPT = """Question de l'utilisateur :
 {question}
@@ -45,6 +49,33 @@ NO_RESULT_MESSAGE = (
     "Je n'ai trouvé aucun événement correspondant à votre demande dans notre base. "
     "Essayez avec d'autres mots-clés, une autre période ou une autre ville."
 )
+
+LLM_UNAVAILABLE_MESSAGE = (
+    "Le modèle de rédaction est momentanément indisponible ({raison}). "
+    "Voici tout de même les événements trouvés pour votre demande :"
+)
+
+
+def describe_llm_error(error: Exception) -> str:
+    """Traduit une erreur d'appel au LLM en une raison lisible par un utilisateur."""
+    text = str(error)
+    if "429" in text or "rate limit" in text.lower():
+        return "limite de débit de l'API atteinte"
+    if "401" in text or "unauthorized" in text.lower():
+        return "clé d'API refusée"
+    if "timeout" in text.lower() or "connect" in text.lower():
+        return "service injoignable"
+    return "erreur inattendue du service"
+
+
+def format_events_fallback(results: list[tuple[Document, float]]) -> str:
+    """Liste lisible des événements trouvés, quand le LLM ne peut pas rédiger."""
+    lines = []
+    for doc, _ in results:
+        meta = doc.metadata
+        lieu = ", ".join(part for part in [meta.get("location_name"), meta.get("city")] if part)
+        lines.append(f"- {meta.get('title')} — {lieu}, {meta.get('date_text')}\n  {meta.get('url')}")
+    return "\n".join(lines)
 
 
 def format_context(documents: list[Document]) -> str:
@@ -59,8 +90,12 @@ def build_prompt() -> ChatPromptTemplate:
     return ChatPromptTemplate.from_messages([("system", SYSTEM_PROMPT), ("human", USER_PROMPT)])
 
 
-def get_llm(model: str | None = None, temperature: float = 0.2) -> BaseChatModel:
-    """Le modèle de génération : Mistral, via LangChain."""
+def get_llm(model: str | None = None, temperature: float = 0.0) -> BaseChatModel:
+    """Le modèle de génération : Mistral, via LangChain.
+
+    Température à 0 : la tâche est de restituer fidèlement des fiches, pas d'inventer.
+    Toute créativité se paie ici en erreurs de dates.
+    """
     from langchain_mistralai import ChatMistralAI
 
     if not config.mistral_api_key():
@@ -124,17 +159,30 @@ class RAGService:
 
         if not results:
             return {"question": question, "answer": NO_RESULT_MESSAGE, "sources": [],
+                    "llm_disponible": True,
                     "duree_secondes": round(time.perf_counter() - started, 2)}
 
         documents = [doc for doc, _ in results]
         today = (reference_date or config.reference_date()).strftime("%d/%m/%Y")
         messages = self._prompt.format_messages(
             today=today, question=question, context=format_context(documents))
-        answer = self.llm.invoke(messages).content
+
+        # Le mode dégradé est volontaire : si Mistral est indisponible (quota, réseau),
+        # la recherche a déjà fait son travail et l'utilisateur reçoit les événements
+        # trouvés plutôt qu'une erreur technique.
+        llm_disponible = True
+        try:
+            answer = self.llm.invoke(messages).content
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Appel au LLM impossible : %s", exc)
+            llm_disponible = False
+            answer = (LLM_UNAVAILABLE_MESSAGE.format(raison=describe_llm_error(exc))
+                      + "\n\n" + format_events_fallback(results))
 
         return {
             "question": question,
             "answer": answer,
+            "llm_disponible": llm_disponible,
             "sources": [
                 {
                     "uid": doc.metadata.get("uid"),
