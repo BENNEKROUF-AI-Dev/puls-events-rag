@@ -24,6 +24,32 @@ import json
 import statistics
 from pathlib import Path
 
+from langchain_core.embeddings import Embeddings
+
+
+class NamedEmbeddings(Embeddings):
+    """Adaptateur qui expose le NOM du modèle d'embeddings sous forme de chaîne.
+
+    Ragas journalise l'usage des embeddings et lit l'attribut `model` en
+    attendant du texte. `FastEmbedEmbeddings` y range l'objet du modèle chargé,
+    et la validation échoue — rendant la métrique `answer_relevancy`
+    inexploitable. Désactiver la télémétrie de Ragas ne suffit pas : l'objet de
+    suivi est construit, et donc validé, avant même qu'on vérifie s'il faut
+    l'envoyer.
+
+    Cet adaptateur ne fait que déléguer les appels, en exposant un nom lisible.
+    """
+
+    def __init__(self, embeddings: Embeddings, model: str = "inconnu"):
+        self.embeddings = embeddings
+        self.model = model
+
+    def embed_query(self, text: str) -> list[float]:
+        return self.embeddings.embed_query(text)
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return self.embeddings.embed_documents(texts)
+
 
 # --- Fichiers -----------------------------------------------------------------
 def load_questions(path: Path | str) -> list[dict]:

@@ -36,8 +36,8 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from rag import config  # noqa: E402
 from rag.chain import RAGService  # noqa: E402
-from rag.evaluation import (load_annotations, load_questions, retrieval_metrics,  # noqa: E402
-                            save_json, suggest_relevant)
+from rag.evaluation import (NamedEmbeddings, load_annotations, load_questions,  # noqa: E402
+                            retrieval_metrics, save_json, suggest_relevant)
 from rag.indexer import load_index_info  # noqa: E402
 
 QUESTIONS_PATH = ROOT / "eval" / "questions.json"
@@ -60,10 +60,25 @@ def annotate(service: RAGService, questions: list[dict], k: int) -> None:
     annotations = load_annotations(ANNOTATIONS_PATH)
     deja = annotations.get("questions", {})
 
+    def enregistrer() -> None:
+        """Écrit le fichier d'annotations.
+
+        Appelée après CHAQUE question, et pas seulement à la fin : annoter est un
+        travail manuel long, et une interruption ne doit jamais le faire perdre.
+        """
+        save_json(ANNOTATIONS_PATH, {
+            "index": load_index_info(),
+            "annote_le": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "k": k,
+            "questions": deja,
+        })
+
     print(f"Annotation de {len(questions)} questions. Pour chacune, indiquez les numéros "
           "des événements PERTINENTS.")
     print("  ex. « 1 3 4 »  |  « 0 » = aucun  |  Entrée = garder la proposition (*)  |  "
-          "« s » = passer  |  « q » = arrêter\n")
+          "« s » = passer  |  « q » = arrêter")
+    print("  Chaque réponse est enregistrée aussitôt : vous pouvez interrompre et "
+          "reprendre quand vous voulez.\n")
 
     for question in questions:
         qid = question["id"]
@@ -77,6 +92,7 @@ def annotate(service: RAGService, questions: list[dict], k: int) -> None:
             print("  aucun résultat retourné par la recherche")
             deja[qid] = {"question": question["question"], "pertinents": [],
                          "proposes": [], "aucun_resultat": True}
+            enregistrer()
             continue
 
         proposition = suggest_relevant(question, sources)
@@ -90,7 +106,10 @@ def annotate(service: RAGService, questions: list[dict], k: int) -> None:
 
         try:
             saisie = input("  pertinents > ").strip().lower()
-        except EOFError:
+        except (EOFError, KeyboardInterrupt):
+            # Ctrl+C ou Ctrl+Z : on sort proprement. Le travail déjà saisi est
+            # sur le disque, question par question.
+            print("\n  Interruption. Les annotations déjà saisies sont conservées.")
             saisie = "q"
         if saisie == "q":
             break
@@ -110,15 +129,12 @@ def annotate(service: RAGService, questions: list[dict], k: int) -> None:
             "proposes": [s["uid"] for s in sources],
             "titres_pertinents": [s["titre"] for s in sources if s["uid"] in pertinents],
         }
-        print(f"  -> {len(pertinents)} pertinent(s) sur {len(sources)}")
+        enregistrer()
+        print(f"  -> {len(pertinents)} pertinent(s) sur {len(sources)}, enregistré")
 
-    save_json(ANNOTATIONS_PATH, {
-        "index": load_index_info(),
-        "annote_le": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "k": k,
-        "questions": deja,
-    })
-    print(f"\nAnnotations enregistrées : eval/annotations.json ({len(deja)} questions)")
+    enregistrer()
+    print(f"\nAnnotations enregistrées : eval/annotations.json ({len(deja)} questions sur "
+          f"{len(questions)})")
 
 
 # --- 2. Recherche -------------------------------------------------------------
@@ -151,7 +167,7 @@ def evaluate_generation(service: RAGService, questions: list[dict], k: int,
                                ResponseRelevancy)
 
     from rag.chain import format_context, get_llm
-    from rag.embeddings import get_embeddings
+    from rag.embeddings import describe, get_embeddings
 
     a_juger = [q for q in questions if not q.get("hors_perimetre")][:limit]
     echantillons, degrades = [], []
@@ -178,9 +194,21 @@ def evaluate_generation(service: RAGService, questions: list[dict], k: int,
     print("Jugement par Ragas (un appel au LLM par métrique et par question)...")
     scores = evaluate(
         dataset=EvaluationDataset(samples=echantillons),
-        metrics=[Faithfulness(), ResponseRelevancy(), LLMContextPrecisionWithoutReference()],
+        metrics=[Faithfulness(),
+                 # strictness=1 au lieu de 3 par défaut. Cette métrique fait
+                 # régénérer plusieurs questions à partir de la réponse, puis
+                 # LangChain fusionne les générations — et additionne au passage
+                 # les compteurs de jetons renvoyés par Mistral. L'API renvoie
+                 # désormais un dictionnaire imbriqué là où LangChain attend un
+                 # nombre : la fusion échoue sur « dict += dict » et la métrique
+                 # vaut NaN. Avec une seule génération, il n'y a rien à fusionner.
+                 # Compromis assumé : l'estimation est plus bruitée qu'avec trois
+                 # questions générées. Incompatibilité de bibliothèques, pas du RAG.
+                 ResponseRelevancy(strictness=1),
+                 LLMContextPrecisionWithoutReference()],
         llm=LangchainLLMWrapper(get_llm()),
-        embeddings=LangchainEmbeddingsWrapper(get_embeddings()),
+        embeddings=LangchainEmbeddingsWrapper(
+            NamedEmbeddings(get_embeddings(), describe()["model"])),
     )
     return {"questions_jugees": len(echantillons), "scores": dict(scores._repr_dict)}
 

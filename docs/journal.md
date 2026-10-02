@@ -498,3 +498,198 @@ Deux corrections en découlent. `check_env.py --online` teste maintenant le mod�
 `config.LLM_MODEL` au lieu d'un nom codé en dur : sans cela, la vérification pouvait passer
 au vert pendant que l'application échouait. Et `/health` expose le modèle, ce qui a servi
 exactement à ça.
+
+## Résultats de l'évaluation
+
+### Les chiffres
+
+Jeu de 20 questions, dont 3 hors périmètre comptées à part. Annotation manuelle des
+5 premiers résultats de chaque question, sur l'index de 14 815 documents.
+
+| Recherche (annotation humaine) | |
+|---|---|
+| questions notées | 17 |
+| précision@5 | 0,447 |
+| MRR | 0,615 |
+| taux de réussite | 0,765 |
+
+| Génération (Ragas, 17 questions) | |
+|---|---|
+| faithfulness | 0,936 |
+| answer relevancy | 0,500 |
+| context precision | 0,619 |
+
+Le **MRR de 0,615** est le chiffre le plus parlant : quand la recherche trouve, le premier
+résultat pertinent arrive en moyenne entre la première et la deuxième position. C'est ce
+que perçoit un utilisateur, qui lit les premières propositions et rarement les suivantes.
+
+La **faithfulness de 0,936** répond directement à l'épisode de la date inventée : le système
+ne fabrique plus d'information absente des fiches.
+
+### Deux méthodes indépendantes qui concordent
+
+L'**answer relevancy de 0,500** n'est pas un résultat isolé. Le taux de réussite de la
+recherche est de 0,765, soit 13 questions sur 17. Si les réponses issues de ces 13 sont
+bonnes et que les 4 autres sont hors sujet, on retombe mécaniquement autour de 0,5.
+
+Or ces deux mesures n'ont rien en commun : l'une vient d'annotations humaines sur les
+résultats de recherche, l'autre d'un LLM qui juge les réponses finales sans connaître ces
+annotations. Elles aboutissent au même diagnostic — quand la recherche trouve, le système
+répond bien ; quand elle échoue, la réponse est inutilisable. Une métrique isolée se
+discute ; deux méthodes indépendantes qui convergent, beaucoup moins.
+
+### Trois métriques, et ce qu'elles ne disent pas
+
+**Le rappel a été retiré du rapport.** Il valait 0,765, exactement le taux de réussite — et
+ce n'est pas une coïncidence. La pertinence étant annotée *parmi les cinq résultats
+affichés*, tout événement pertinent connu est par construction dans le top 5 : le rappel
+vaut 1 partout où quelque chose a été trouvé, 0 ailleurs. Il ne mesure donc rien de plus
+que le taux de réussite. Un vrai rappel exigerait d'annoter les 12 730 événements, ce qui
+est hors de portée d'une annotation manuelle. La limite est inhérente au protocole, pas au
+système.
+
+**Le « 3/3 hors périmètre » mesure l'annotation, pas le système.** Il compte les questions
+où l'annotateur n'a retenu aucun événement. La recherche, elle, a bien renvoyé cinq
+résultats pour « un match de football à Marseille ». Savoir refuser relève de la
+génération, pas de la recherche.
+
+**Aucune métrique ne mesure la diversité.** Sur « une sortie avec des enfants », les cinq
+résultats se réduisent à deux événements — trois tranches d'âge d'un même atelier et deux
+dates d'un même rendez-vous. La précision vaut 1,0 alors que la réponse est pauvre. Même
+constat sur « une rencontre autour d'un livre » : trois places sur cinq pour le même
+rendez-vous à trois dates.
+
+### Le juge est instable, et il est trop petit
+
+Quatre exécutions successives sur les mêmes données :
+
+| | faithfulness | context precision |
+|---|---|---|
+| 1 | 0,953 | 0,647 |
+| 2 | 0,982 | 0,613 |
+| 3 | 0,945 | 0,618 |
+| 4 | 1,000 | 0,373 |
+
+Rien n'avait changé côté recherche entre la 3 et la 4. L'écart de 25 points vient du juge,
+`ministral-3b-latest` — le plus petit modèle de la gamme, retenu parce que c'était le seul
+accessible sur l'offre gratuite. Deux conséquences assumées :
+
+- ces scores sont annoncés comme des ordres de grandeur, jamais comme des valeurs exactes ;
+- le même modèle rédige et juge, ce qui est une faiblesse méthodologique connue : un modèle
+  note favorablement ses propres productions. Juger avec un modèle plus puissant que celui
+  qui rédige serait préférable, mais inaccessible ici.
+
+### Quatre familles de défauts, trouvées par l'évaluation
+
+**1. Les contraintes temporelles sont ignorées** (q09, q13, q14 — trois questions à zéro).
+« Un soir de semaine » renvoie des événements à 8h30 et 10h30. « Ce week-end » renvoie des
+événements de décembre, à deux mois. « Pendant les vacances de Noël » renvoie cinq
+événements de Noël, tous antérieurs aux vacances — succès thématique, échec temporel.
+L'embedding compare du texte : il ne lit pas une heure et ne calcule pas une date.
+
+Correction identifiée : le mécanisme existe déjà. Les événements terminés sont écartés par
+un filtre structuré sur `date_end`, pas en espérant que l'embedding comprenne « à venir ».
+Il faut détecter les intentions temporelles de la question et poser les mêmes filtres sur
+`date_begin`.
+
+**2. Les contraintes géographiques sont approximatives** (q11, q12). « Du côté de
+Saint-Nazaire » remonte Saint-Philbert, Saint-Herblain et Saint-Hilaire : des noms qui se
+ressemblent, à 60 km. « Près de la mer » remonte « Océanissime », à Nantes, à 50 km de la
+côte — le thème colle, le lieu non. Le succès apparent sur « à Nantes » (q10) était de la
+chance : « Nantes » est un mot distinctif. Même correction : `city` est une métadonnée, elle
+doit être filtrée, pas devinée.
+
+**3. Le sujet est capté, la forme est perdue** (q03, q04, q16). « Exposition de peinture »
+remonte des ateliers où l'on peint soi-même. « Plutôt une comédie » remonte *Terreur*, une
+pièce de procès. « Un festival de musique » remonte cinq concerts d'une soirée, dont un bal :
+le mot « festival » a été purement ignoré.
+
+**4. La diversité n'est pas gérée** (q07, q17), décrite plus haut.
+
+### Un seuil de score ne réglerait pas le hors-périmètre
+
+Première intuition devant les échecs : rejeter les résultats sous un score minimal. La
+question hors périmètre « un match de football à Marseille » l'invalide — son premier
+résultat obtient **0,653**, contre 0,520 pour « un atelier pour apprendre de mes mains » et
+0,515 pour « des sorties gratuites », deux questions parfaitement légitimes. Un seuil à 0,45
+laisserait passer le football et rejetterait l'origami.
+
+La raison est que la similarité cosinus est **relative** : elle dit « voici les fiches les
+plus proches parmi 14 815 », pas « voici à quel point c'est une bonne réponse ». Le mot
+« match » a suffi à faire remonter des matchs d'improvisation.
+
+Piste plus prometteuse observée sur « quel temps fera-t-il demain ? » : l'**écart** entre le
+premier et le dernier résultat y tombe à 0,02 — tous les scores dans le bruit. Un écart
+faible signale mieux l'absence de réponse qu'un seuil absolu.
+
+### Une question impossible : le prix
+
+« Des sorties gratuites » ne peut pas être traitée correctement, quelle que soit la qualité
+de la recherche. Le champ `conditions` est vide pour une grande partie des fiches, et quand
+il est rempli il mélange tarif, modalité d'inscription et jauge : « Gratuit », « Sur
+réservation », « 50 places », « Sans inscription », « Prix libre ». C'est une limite de la
+source, pas du RAG — et la distinction compte.
+
+Défaut relevé au passage dans l'outil d'annotation lui-même : il affiche titre, ville et
+date, mais pas les conditions. Impossible d'annoter une question de prix sans aller lire le
+fichier de données à côté.
+
+### Le nettoyage filtre la source, pas le contenu
+
+Deux fiches non culturelles sont remontées en tête : un atelier d'insertion
+professionnelle (« Détection de Potentiel Industrie ») et un point d'information
+administratif (« Point Information Nantes Solidaire »). C'est le bruit écarté dans le Nord
+en filtrant l'agenda France Travail — sauf que celles-ci viennent d'agendas généralistes qui
+mélangent culture et service public. Un filtre par source attrape le gros du bruit, pas
+tout.
+
+## Incidents rencontrés pendant l'évaluation
+
+### L'outil d'annotation perdait le travail
+
+`Ctrl+C` pendant la saisie levait une `KeyboardInterrupt` non interceptée, et
+l'enregistrement n'avait lieu qu'à la fin de la boucle : vingt minutes d'annotation perdues.
+Corrigé en enregistrant après **chaque** question et en traitant l'interruption comme un
+arrêt propre. Un outil qui demande un travail manuel long doit considérer l'interruption
+comme le cas normal, pas comme une exception.
+
+### Kaspersky cassait les appels HTTPS asynchrones
+
+Ragas échouait sur `CERTIFICATE_VERIFY_FAILED: self-signed certificate in certificate
+chain`. L'antivirus inspecte le trafic chiffré : il déchiffre, analyse et rechiffre avec son
+propre certificat, que Python ne connaît pas. Les appels synchrones passaient, les appels
+asynchrones de Ragas non.
+
+Corrigé en ajoutant les certificats de confiance de Windows au magasin de `certifi` de
+l'environnement virtuel. Effet secondaire mesurable : la vitesse d'évaluation est passée de
+1,83 s par itération à 2,66 itérations par seconde — chaque appel ne partait plus en quatre
+secondes d'attente avant de réessayer.
+
+À distinguer d'un 429 : une erreur de certificat signifie que le serveur n'a **jamais** reçu
+la requête, alors qu'un 429 est une réponse du serveur.
+
+### Deux incompatibilités de bibliothèques derrière un même `NaN`
+
+La métrique `answer_relevancy` est restée à `NaN` deux fois de suite, pour deux causes
+distinctes et sans rapport :
+
+1. **`TypeError: unsupported operand type(s) for +=: 'dict' and 'dict'`.** Cette métrique
+   fait régénérer trois questions à partir de la réponse (`strictness=3`), et LangChain
+   fusionne les générations en additionnant les compteurs de jetons renvoyés par Mistral.
+   L'API renvoie désormais un dictionnaire imbriqué là où LangChain attend un nombre.
+   Contourné par `strictness=1` : une seule génération, donc rien à fusionner. Compromis
+   assumé — l'estimation est plus bruitée.
+
+2. **`ValidationError for EmbeddingUsageEvent`.** Ragas journalise l'usage des embeddings et
+   lit l'attribut `model` en attendant une chaîne ; `FastEmbedEmbeddings` y range l'objet du
+   modèle chargé. Désactiver la télémétrie ne suffisait pas : l'objet de suivi est construit,
+   et donc validé, *avant* qu'on vérifie s'il faut l'envoyer. Réglé par un adaptateur
+   (`NamedEmbeddings`) qui délègue les appels en exposant un nom lisible. Trois tests figent
+   le comportement.
+
+Les deux fois, le symptôme était identique et silencieux — une métrique à `NaN`, aucune
+erreur fatale — et la cause était à trois bibliothèques de distance. C'est le coût réel d'un
+écosystème qui bouge vite, et la justification concrète d'un `requirements.txt` aux versions
+figées.
+
+Total : 149 tests.

@@ -5,7 +5,8 @@ ci-dessous a un résultat calculé à la main, écrit dans le commentaire.
 """
 import pytest
 
-from rag.evaluation import load_questions, retrieval_metrics, save_json, suggest_relevant
+from rag.evaluation import (NamedEmbeddings, load_questions, retrieval_metrics, save_json,
+                            suggest_relevant)
 
 QUESTIONS = [
     {"id": "q1", "question": "un concert de jazz", "attendu": {"mots_cles": ["jazz"]}},
@@ -97,6 +98,25 @@ class TestRetrievalMetrics:
         report = retrieval_metrics(QUESTIONS, {"questions": {}}, {}, k=5)
         assert report["questions_notees"] == 0
         assert report["mrr"] == 0.0
+
+
+class TestNamedEmbeddings:
+    """Ragas lit l'attribut `model` en attendant du texte. Sans cet adaptateur,
+    la métrique answer_relevancy vaut NaN (voir docs/journal.md)."""
+
+    def test_le_nom_du_modele_est_une_chaine(self, embeddings):
+        adapte = NamedEmbeddings(embeddings, "mon-modele")
+        assert isinstance(adapte.model, str), "Ragas rejette tout ce qui n'est pas du texte"
+        assert adapte.model == "mon-modele"
+
+    def test_les_appels_sont_delegues_sans_rien_changer(self, embeddings):
+        adapte = NamedEmbeddings(embeddings, "mon-modele")
+        assert adapte.embed_query("un concert") == embeddings.embed_query("un concert")
+        textes = ["un concert", "une exposition"]
+        assert adapte.embed_documents(textes) == embeddings.embed_documents(textes)
+
+    def test_un_modele_non_renseigne_reste_une_chaine(self, embeddings):
+        assert isinstance(NamedEmbeddings(embeddings).model, str)
 
 
 class TestFichiers:

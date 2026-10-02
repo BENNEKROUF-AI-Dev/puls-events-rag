@@ -1,0 +1,361 @@
+{
+  "index": {
+    "provider": "local",
+    "model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+    "dimension": 384,
+    "type_index": "IndexFlatIP",
+    "nombre_evenements": 12730,
+    "nombre_documents": 14815,
+    "documents_par_evenement": 1.16,
+    "taille_chunk": 1200,
+    "recouvrement_chunk": 150,
+    "duree_vectorisation_secondes": 1340.3,
+    "construit_le": "2026-09-24T21:22:31+00:00"
+  },
+  "annote_le": "2026-10-02T09:34:54+00:00",
+  "k": 5,
+  "questions": {
+    "q01": {
+      "question": "quels concerts de musique classique à venir ?",
+      "pertinents": [
+        "71410414",
+        "98343274",
+        "54412647",
+        "96030548"
+      ],
+      "proposes": [
+        "71410414",
+        "87660894",
+        "98343274",
+        "54412647",
+        "96030548"
+      ],
+      "titres_pertinents": [
+        "Le K, Chorale associée à la Soufflerie",
+        "Le jazz à la rencontre du classique - Concert symphonique - Saison ONPL",
+        "Musique classique - La toile chante le piano peint - Jeudis de la chapelle",
+        "Interzone et le Quatuor Debussy"
+      ]
+    },
+    "q02": {
+      "question": "un concert de jazz pas trop loin",
+      "pertinents": [
+        "24259170",
+        "98343274",
+        "14820021"
+      ],
+      "proposes": [
+        "24259170",
+        "71410414",
+        "62040197",
+        "98343274",
+        "14820021"
+      ],
+      "titres_pertinents": [
+        "Le jazz à la rencontre du classique",
+        "Le jazz à la rencontre du classique - Concert symphonique - Saison ONPL",
+        "Floating - Emile Parisien"
+      ]
+    },
+    "q03": {
+      "question": "je cherche une exposition de peinture",
+      "pertinents": [
+        "24052689",
+        "78739649"
+      ],
+      "proposes": [
+        "24052689",
+        "23151633",
+        "95994724",
+        "78739649",
+        "54837929"
+      ],
+      "titres_pertinents": [
+        "Salon Impressions d'arts – 18e édition",
+        "Expo Peinture"
+      ]
+    },
+    "q04": {
+      "question": "du théâtre, plutôt une comédie",
+      "pertinents": [
+        "57734028",
+        "93631870",
+        "24829383"
+      ],
+      "proposes": [
+        "57734028",
+        "37874719",
+        "93631870",
+        "16091984",
+        "24829383"
+      ],
+      "titres_pertinents": [
+        "Made in France | Théâtre",
+        "LES FAUX BRITISH, une vraie comédie catastrophe",
+        "La Jalousie | Théâtre"
+      ]
+    },
+    "q05": {
+      "question": "un spectacle de danse contemporaine",
+      "pertinents": [
+        "45564439",
+        "95746284",
+        "96210295"
+      ],
+      "proposes": [
+        "45564439",
+        "95746284",
+        "94306666",
+        "14449917",
+        "96210295"
+      ],
+      "titres_pertinents": [
+        "Derrière - pjpp / Claire Laureau et Nicolas Chaigneau",
+        "L’après-midi d’un foehn Version 1 - Compagnie Non Nova",
+        "Hop hop hop : performance et atelier danse"
+      ]
+    },
+    "q06": {
+      "question": "des projections de films ou du cinéma en plein air",
+      "pertinents": [
+        "41319280",
+        "50901647",
+        "81750952",
+        "54175739"
+      ],
+      "proposes": [
+        "41319280",
+        "50901647",
+        "95746284",
+        "81750952",
+        "54175739"
+      ],
+      "titres_pertinents": [
+        "Soirée Clap – Initiation au cinéma",
+        "Tous au ciné",
+        "Projection de \"Wolobougou\" de Camille Ravenne suivi d'un débat",
+        "Bobinocinoches - La grande rêvasion"
+      ]
+    },
+    "q07": {
+      "question": "une sortie à faire avec des enfants",
+      "pertinents": [
+        "57112478",
+        "59134902",
+        "56121354",
+        "35165819",
+        "45015456"
+      ],
+      "proposes": [
+        "57112478",
+        "59134902",
+        "56121354",
+        "35165819",
+        "45015456"
+      ],
+      "titres_pertinents": [
+        "Atelier Parents enfants (7 - 12 ans)",
+        "Atelier Parents enfants (3 - 6 ans)",
+        "A petit pas tis-sons",
+        "A petit pas tis-sons",
+        "Atelier Parent enfants (0-3 ans)"
+      ]
+    },
+    "q08": {
+      "question": "un atelier pour apprendre quelque chose de mes mains",
+      "pertinents": [
+        "63200189"
+      ],
+      "proposes": [
+        "72769820",
+        "54837929",
+        "30423176",
+        "63200189",
+        "77986544"
+      ],
+      "titres_pertinents": [
+        "Atelier origami en famille"
+      ]
+    },
+    "q09": {
+      "question": "quelque chose à faire seul un soir de semaine",
+      "pertinents": [],
+      "proposes": [
+        "3705095",
+        "10015070",
+        "4464108",
+        "95746284",
+        "72550170"
+      ],
+      "titres_pertinents": []
+    },
+    "q10": {
+      "question": "qu'est-ce qu'il se passe à Nantes ?",
+      "pertinents": [
+        "34537427",
+        "60288292",
+        "30911241"
+      ],
+      "proposes": [
+        "8587784",
+        "34537427",
+        "60288292",
+        "30911241",
+        "66506043"
+      ],
+      "titres_pertinents": [
+        "Jeudi des Fabriques - Cie Les Hostilités : (J'ai vu) L'eau vive",
+        "Jeudi des Fabriques - Cie Les Hostilités : (J'ai vu) L'eau vive",
+        "Antoine Donneaux - Imitateur mais pas que !"
+      ]
+    },
+    "q11": {
+      "question": "des événements du côté de Saint-Nazaire",
+      "pertinents": [
+        "46229500",
+        "93306919"
+      ],
+      "proposes": [
+        "10201332",
+        "46229500",
+        "93306919",
+        "51287314",
+        "80009744"
+      ],
+      "titres_pertinents": [
+        "Garden of Commons, Nefeli Papadimouli",
+        "PORTES OUVERTES DU SNOS EP AVEC SNOS EP"
+      ]
+    },
+    "q12": {
+      "question": "une sortie près de la mer",
+      "pertinents": [
+        "98784462",
+        "46681782",
+        "38029741"
+      ],
+      "proposes": [
+        "98784462",
+        "46681782",
+        "38029741",
+        "71582415",
+        "58120772"
+      ],
+      "titres_pertinents": [
+        "Sortie en mer - Initiation voile",
+        "Visite guidée Le trésor du Capitaine Morgane",
+        "Normandie dans l'oeil des photographes des chantiers navals et de Roger Schall"
+      ]
+    },
+    "q13": {
+      "question": "des idées pour ce week-end",
+      "pertinents": [],
+      "proposes": [
+        "12326871",
+        "23111551",
+        "51287314",
+        "92455306",
+        "91134493"
+      ],
+      "titres_pertinents": []
+    },
+    "q14": {
+      "question": "qu'est-ce qui se passe pendant les vacances de Noël ?",
+      "pertinents": [],
+      "proposes": [
+        "65787337",
+        "9851387",
+        "41506315",
+        "64588335",
+        "82339683"
+      ],
+      "titres_pertinents": []
+    },
+    "q15": {
+      "question": "des sorties gratuites",
+      "pertinents": [
+        "99365371"
+      ],
+      "proposes": [
+        "63204297",
+        "95746284",
+        "11564054",
+        "2281659",
+        "99365371"
+      ],
+      "titres_pertinents": [
+        "Débat Place publique : Médias et extrême droite : le commerce de la peur"
+      ]
+    },
+    "q16": {
+      "question": "un festival de musique",
+      "pertinents": [],
+      "proposes": [
+        "71410414",
+        "96030548",
+        "62040197",
+        "14449917",
+        "76719610"
+      ],
+      "titres_pertinents": []
+    },
+    "q17": {
+      "question": "une conférence ou une rencontre autour d'un livre",
+      "pertinents": [
+        "72408525",
+        "38102733",
+        "35111729",
+        "3176272"
+      ],
+      "proposes": [
+        "72408525",
+        "38102733",
+        "35111729",
+        "3176272",
+        "51287314"
+      ],
+      "titres_pertinents": [
+        "Dire-Lire",
+        "Dire-Lire",
+        "Dire-Lire",
+        "Causons livres !"
+      ]
+    },
+    "q18": {
+      "question": "un match de football à Marseille",
+      "pertinents": [],
+      "proposes": [
+        "74870008",
+        "51846337",
+        "14955474",
+        "5106440",
+        "92455306"
+      ],
+      "titres_pertinents": []
+    },
+    "q19": {
+      "question": "quel temps fera-t-il demain ?",
+      "pertinents": [],
+      "proposes": [
+        "90950856",
+        "90155565",
+        "12185061",
+        "77551473",
+        "66341991"
+      ],
+      "titres_pertinents": []
+    },
+    "q20": {
+      "question": "réserve-moi deux places pour le prochain concert",
+      "pertinents": [],
+      "proposes": [
+        "76719610",
+        "66020256",
+        "20146328",
+        "45564439",
+        "87733132"
+      ],
+      "titres_pertinents": []
+    }
+  }
+}
