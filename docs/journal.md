@@ -334,3 +334,167 @@ mot pour mot, et ne pas annoncer une absence de résultat quand les fiches en co
 Enseignement pour l'étape 5 : sans mesure automatique, ce genre d'erreur passe inaperçu.
 C'est exactement ce que mesure la métrique *faithfulness* de Ragas. Le jeu de test annoté
 devra contenir des questions dont la réponse attendue comporte une date précise.
+
+## Étape 5 — L'API REST et l'évaluation
+
+### Ce que l'API ne fait pas
+
+Le fichier `src/rag/api.py` ne contient aucune règle métier : il traduit du HTTP vers
+`RAGService` et retour. C'est délibéré. Toute la logique du RAG vit dans `rag.chain`, donc
+elle se teste sans serveur, s'utilise depuis un script ou un notebook, et resterait valable
+si l'on remplaçait FastAPI par autre chose. Le même raisonnement a fait naître
+`rag.pipeline` (le rafraîchissement complet) et `rag.evaluation` (le calcul des métriques) :
+du code testable dans le paquet, des scripts réduits à des interfaces en ligne de commande.
+
+### Le service est chargé une fois, pas à chaque requête
+
+L'index est chargé au premier appel, puis gardé en mémoire. Le charger à chaque question
+coûterait plusieurs secondes et autant de mémoire pour rien.
+
+Un détail est apparu à l'écriture : sous une API, plusieurs requêtes peuvent arriver
+*pendant* ce premier chargement, et chacune chargerait sa propre copie des 15 000 vecteurs.
+Un verrou (`threading.Lock`) règle le cas. Même raison pour un second changement : le
+paramètre « uniquement les événements à venir » était un attribut du service, modifié au
+passage par chaque requête — deux requêtes simultanées se marchaient donc dessus. Il est
+devenu un paramètre d'appel. Ce sont deux bugs qui ne se voient jamais en usage manuel.
+
+### `/rebuild` : reconstruire sans jamais casser l'index qui répond
+
+Reconstruire l'index prend plusieurs minutes. Trois précautions :
+
+1. **Réponse immédiate (202), travail en tâche de fond.** Le client suit l'avancement sur
+   `/health` plutôt que d'attendre au bout d'une requête HTTP qui expirerait.
+2. **Construction à côté, puis renommage.** Le nouvel index est bâti dans un dossier voisin
+   et mis en place par deux renommages, quelques millisecondes. Un échec en cours de route
+   laisse donc l'ancien index intact et interrogeable. Un test simule un échec au moment de
+   la mise en place et vérifie que l'ancien index est bien restauré.
+3. **Jeton obligatoire.** L'endpoint est protégé par l'en-tête `X-Rebuild-Token`, comparé
+   avec `secrets.compare_digest` (comparaison à durée constante). Sans `REBUILD_TOKEN`
+   configuré, l'endpoint est **désactivé** : rien n'est exposé par accident.
+
+Un garde-fou s'est ajouté en écrivant le pipeline : si le nettoyage ne laisse aucun
+événement — mauvais département, API qui renvoie une réponse vide — le rafraîchissement est
+abandonné avant de toucher à l'index. Sans cela, une erreur de saisie suffisait à remplacer
+un index de 15 000 vecteurs par un index vide.
+
+### Le mode dégradé est un succès HTTP, pas une erreur
+
+Quand Mistral est indisponible, `/ask` répond **200** avec `llm_disponible: false` et la
+liste des événements trouvés. Renvoyer 503 serait faux : la recherche a fonctionné, la
+réponse est utile, seule la mise en forme manque. Seul un index absent donne un 503, avec la
+commande à lancer dans le message.
+
+### Deux évaluations, parce qu'il y a deux façons d'échouer
+
+Un RAG peut se tromper à deux endroits, et une note globale les mélangerait :
+
+| Ce qui est mesuré | Comment | Dépend du LLM ? |
+|---|---|---|
+| La **recherche** trouve-t-elle le bon événement ? | précision@k, rappel@k, MRR sur annotations humaines | non |
+| La **génération** reste-t-elle fidèle aux fiches ? | Ragas : faithfulness, answer relevancy, context precision | oui |
+
+Séparer les deux a un intérêt très concret ici : le quota Mistral étant épuisé, la qualité
+de la recherche reste mesurable. C'est la moitié du système que l'on peut noter aujourd'hui.
+
+Le jeu de `eval/questions.json` compte 20 questions écrites comme les poserait un habitant
+(courtes, familières, parfois imprécises) : thème, lieu, public, période, prix — et trois
+questions **hors périmètre** (un match à Marseille, la météo, une réservation). Ces trois-là
+sont comptées à part : elles n'ont pas de bonne réponse à trouver, bien y répondre c'est ne
+rien proposer. Les mêler aux autres gonflerait les moyennes.
+
+L'annotation est manuelle (`--annotate`), avec une pré-sélection par mots-clés seulement
+comme aide à la saisie. Évaluer une recherche sémantique avec une recherche par mots-clés
+n'aurait mesuré que leur ressemblance.
+
+**Choix du MRR.** Précision et rappel ne disent pas *où* le bon résultat apparaît. Deux
+recherches de précision identique n'ont pas la même valeur selon que l'événement pertinent
+sort en première ou en cinquième position, puisque l'utilisateur lit les premières
+propositions et rarement les suivantes. Un test vérifie ce cas précis, et il a servi : il a
+pris en défaut mon propre calcul à la main, pas le code.
+
+**Ragas : l'API historique plutôt que la nouvelle.** Ragas 0.4.3 déprécie `ragas.metrics` au
+profit de `ragas.metrics.collections`. La nouvelle exige un client passant par `instructor`,
+dont la version est déjà contrainte sur ce projet (voir `requirements.txt`, où `instructor`
+a imposé `mistralai < 2`). L'ancienne API fonctionne avec le wrapper LangChain et n'émet
+qu'un avertissement de dépréciation : c'est le choix le moins risqué pour un POC, et il est
+documenté à l'endroit où il est fait.
+
+### Deux niveaux de tests pour l'API
+
+- `tests/test_api.py` (20 tests) appelle l'application **en mémoire** avec `TestClient` :
+  aucun port ouvert, index factice de quatre événements, embeddings déterministes. C'est ce
+  qui tourne dans `pytest`. L'injection de dépendance de FastAPI rend cela possible :
+  `app.dependency_overrides` remplace le service réel par un service de test.
+- `scripts/api_test.py` interroge un **vrai serveur** sur le **vrai index**, et affiche un
+  décompte de vérifications réussies. C'est la démonstration de bout en bout.
+
+Total : 146 tests.
+
+### Deuxième itération sur le prompt : trois défauts, trois règles
+
+Une fois le quota débloqué (voir plus bas), premier vrai test de la chaîne complète. La
+date inventée a disparu : « Beethoven et compagnie » s'affiche bien au 10 novembre 2026.
+La température à 0 et la consigne de recopie mot pour mot ont tenu.
+
+Deux défauts restaient, visibles seulement sur une réponse réelle :
+
+**La réponse s'ouvrait sur une négation.** « Aucun concert de musique classique strictement
+classique n'est encore disponible » — avant de citer trois concerts de musique classique.
+La règle 7 interdisait déjà d'annoncer une absence quand les fiches contiennent des
+événements correspondants ; le modèle l'a contournée avec l'adverbe « strictement ». La
+règle a été réécrite en nommant l'échappatoire : ne jamais ouvrir sur ce qui manque, sur ce
+qui n'est pas disponible, ou sur ce qui ne correspond « pas strictement » ; présenter les
+événements proches comme des recommandations, pas comme des pis-aller.
+
+**Les lieux avaient disparu.** La règle 3 demandait « titre, date, lieu et ville » ; le
+modèle ne donnait que titre et date. Pour un assistant de sorties, c'est l'information la
+plus utile qui manquait. Une consigne énumérative se perd ; un gabarit, non. La règle impose
+désormais une forme exacte — `**Titre** — Lieu, Ville — Date` — assortie de sa raison :
+« une recommandation de sortie sans lieu ne sert à rien ».
+
+Résultat au test suivant : format respecté à la lettre, ouverture directe sur le premier
+événement, lieux présents. Le modèle a même évité la redondance « Conservatoire de Nantes,
+Nantes ».
+
+Deux assertions ont été ajoutées à `test_chain.py` : le test vérifie que ces garde-fous
+figurent bien dans le prompt. Un prompt est du code ; le retirer par mégarde doit casser un
+test, comme n'importe quelle régression.
+
+### Un même code 429, deux causes sans rapport
+
+En cours de route, une erreur a révélé un défaut de mon propre diagnostic :
+
+```
+429 {"message":"Not enough capacity available for this request, please retry later.",
+     "type":"backend_out_of_capacity","code":"3505"}
+```
+
+Ce n'est pas un plafond de compte : ce sont les serveurs de Mistral qui sont saturés à
+l'instant T. La requête précédente était passée, avec la même clé et le même modèle.
+
+Or `describe_llm_error` annonçait « limite de débit de l'API atteinte » dans les deux cas.
+Le message était faux, et surtout trompeur : il envoyait chercher un problème de quota
+inexistant. Les deux causes n'appellent pas la même réaction — un plafond de compte demande
+d'attendre des heures ou de changer d'offre, une saturation quelques secondes.
+
+Le cas `backend_out_of_capacity` est donc traité **avant** le 429 générique, puisque son
+message contient aussi « 429 ». L'ordre des conditions porte ici toute la distinction ; un
+test fige les deux messages.
+
+Enseignement : un code HTTP ne suffit pas à qualifier une panne. Tant qu'on se contente du
+statut, on range sous la même étiquette des situations qui n'ont rien à voir.
+
+### Le modèle configuré ne doit jamais être supposé
+
+Le 429 a persisté deux jours sur ce poste. Cause réelle : `.env` contenait
+`LLM_MODEL=mistral-medium-latest`, alors que le diagnostic de l'étape 4 avait identifié
+`ministral-3b-latest` comme le seul modèle accessible — la ligne n'avait jamais été changée.
+Les gros modèles sont les premiers plafonnés sur l'offre gratuite.
+
+Ce qui l'a révélé : `GET /health`, qui affiche le modèle réellement utilisé. L'information
+était sous les yeux depuis le début, mais nulle part dans les sorties de `ask.py`.
+
+Deux corrections en découlent. `check_env.py --online` teste maintenant le modèle de
+`config.LLM_MODEL` au lieu d'un nom codé en dur : sans cela, la vérification pouvait passer
+au vert pendant que l'application échouait. Et `/health` expose le modèle, ce qui a servi
+exactement à ça.

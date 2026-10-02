@@ -7,6 +7,7 @@ code web.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from datetime import date
 from pathlib import Path
@@ -29,14 +30,18 @@ Règles impératives :
 une date, un lieu ou un prix.
 2. Si aucune fiche ne correspond à la demande, dis-le simplement et propose, \
 si c'est pertinent, ce qui s'en rapproche le plus.
-3. Pour chaque événement recommandé, donne son titre, sa date, son lieu et sa ville.
+3. Présente chaque événement sous cette forme exacte, sur une seule ligne :
+   **Titre** — Lieu, Ville — Date
+   Les quatre informations sont obligatoires. Une recommandation de sortie sans lieu \
+ne sert à rien. Puis une à deux phrases de description en dessous.
 4. RECOPIE les dates, les titres et les lieux EXACTEMENT comme ils figurent dans les fiches. \
 Ne reformule pas une date, ne la convertis pas, ne la déduis pas : copie-la mot pour mot.
 5. Nous sommes le {today}. Signale si un événement est déjà passé ou se termine bientôt.
-6. Réponds en français, sur un ton chaleureux et concis : trois événements au maximum, \
-une à deux phrases chacun.
-7. Ne commence pas par dire qu'il n'y a rien si les fiches contiennent des événements \
-qui correspondent, même partiellement.
+6. Réponds en français, sur un ton chaleureux et concis : trois événements au maximum.
+7. Commence DIRECTEMENT par les recommandations. N'ouvre jamais par une phrase sur ce qui \
+manque, sur ce qui n'est pas disponible, ou sur ce qui ne correspond « pas strictement » \
+à la demande. Si les fiches contiennent des événements proches, présente-les comme des \
+recommandations, pas comme des pis-aller.
 8. Termine par la liste des liens des événements cités."""
 
 USER_PROMPT = """Question de l'utilisateur :
@@ -59,6 +64,15 @@ LLM_UNAVAILABLE_MESSAGE = (
 def describe_llm_error(error: Exception) -> str:
     """Traduit une erreur d'appel au LLM en une raison lisible par un utilisateur."""
     text = str(error)
+    if "MISTRAL_API_KEY" in text:
+        return "clé d'API non configurée"
+    # Attention : Mistral renvoie 429 pour DEUX causes très différentes.
+    # « backend_out_of_capacity » (code 3505) = leurs serveurs sont saturés, rien à
+    # voir avec le compte ni avec le quota ; la même requête passera quelques
+    # secondes plus tard. Les confondre enverrait l'utilisateur chercher un
+    # problème de quota inexistant. Ce cas se teste donc AVANT le 429 générique.
+    if "capacity" in text.lower():
+        return "capacité insuffisante côté Mistral, à réessayer"
     if "429" in text or "rate limit" in text.lower():
         return "limite de débit de l'API atteinte"
     if "401" in text or "unauthorized" in text.lower():
@@ -125,16 +139,33 @@ class RAGService:
         self.only_upcoming = only_upcoming
         self._llm = llm
         self._store = None
+        self._store_lock = threading.Lock()
         self._prompt = build_prompt()
 
     # --- Chargement paresseux --------------------------------------------------
     @property
     def store(self):
+        # Verrou : sous l'API, plusieurs requêtes peuvent arriver pendant le
+        # chargement de l'index. Sans lui, chacune chargerait sa propre copie
+        # des 15 000 vecteurs en mémoire.
         if self._store is None:
-            embeddings = get_embeddings(self.embedding_info["provider"], self.embedding_info["model"])
-            self._store = load_index(embeddings, self.index_dir)
-            logger.info("Index chargé : %d vecteurs", self._store.index.ntotal)
+            with self._store_lock:
+                if self._store is None:
+                    embeddings = get_embeddings(self.embedding_info["provider"],
+                                                self.embedding_info["model"])
+                    self._store = load_index(embeddings, self.index_dir)
+                    logger.info("Index chargé : %d vecteurs", self._store.index.ntotal)
         return self._store
+
+    def reload(self) -> None:
+        """Oublie l'index en mémoire : il sera rechargé à la question suivante.
+
+        Appelée après une reconstruction, pour que le service serve le nouvel
+        index sans redémarrage.
+        """
+        with self._store_lock:
+            self._store = None
+        logger.info("Index déchargé : il sera rechargé à la prochaine question")
 
     @property
     def llm(self) -> BaseChatModel:
@@ -144,18 +175,27 @@ class RAGService:
 
     # --- Utilisation -----------------------------------------------------------
     def retrieve(self, question: str, k: int | None = None,
-                 reference_date: date | None = None) -> list[tuple[Document, float]]:
-        return search(self.store, question, k=k or self.top_k,
-                      only_upcoming=self.only_upcoming, reference_date=reference_date)
+                 reference_date: date | None = None,
+                 only_upcoming: bool | None = None) -> list[tuple[Document, float]]:
+        """Recherche seule, sans appel au LLM.
 
-    def ask(self, question: str, k: int | None = None, reference_date: date | None = None) -> dict:
+        `only_upcoming` est un paramètre d'appel et non un attribut modifié au
+        passage : sous l'API, deux requêtes simultanées se marcheraient dessus.
+        """
+        return search(self.store, question, k=k or self.top_k,
+                      only_upcoming=self.only_upcoming if only_upcoming is None else only_upcoming,
+                      reference_date=reference_date)
+
+    def ask(self, question: str, k: int | None = None, reference_date: date | None = None,
+            only_upcoming: bool | None = None) -> dict:
         """Question -> réponse augmentée + sources citées."""
         question = (question or "").strip()
         if not question:
             raise ValueError("La question est vide.")
 
         started = time.perf_counter()
-        results = self.retrieve(question, k=k, reference_date=reference_date)
+        results = self.retrieve(question, k=k, reference_date=reference_date,
+                                only_upcoming=only_upcoming)
 
         if not results:
             return {"question": question, "answer": NO_RESULT_MESSAGE, "sources": [],

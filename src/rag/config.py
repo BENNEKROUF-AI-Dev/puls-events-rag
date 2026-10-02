@@ -18,7 +18,8 @@ DATA_DIR = ROOT_DIR / "data"
 RAW_DIR = DATA_DIR / "raw"
 PROCESSED_DIR = DATA_DIR / "processed"
 
-INDEX_DIR = DATA_DIR / "index"
+# Surchargeable : le conteneur Docker (étape 6) monte l'index à un autre endroit.
+INDEX_DIR = Path(os.getenv("INDEX_DIR", DATA_DIR / "index"))
 
 DEFAULT_CSV_PATH = RAW_DIR / "evenements-publics-openagenda.csv"
 PROCESSED_EVENTS_PATH = PROCESSED_DIR / "events.jsonl"
@@ -78,12 +79,22 @@ MISTRAL_EMBEDDING_MODEL = os.getenv("MISTRAL_EMBEDDING_MODEL", "mistral-embed")
 EMBEDDING_BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", "64"))
 
 # --- Génération (LLM) ---------------------------------------------------------
-# mistral-small : rapide et peu coûteux, largement suffisant pour reformuler
-# des fiches d'événements. mistral-large-latest pour comparer la qualité.
-LLM_MODEL = os.getenv("LLM_MODEL", "mistral-small-latest")
+# ministral-3b : le plus petit modèle Mistral, et le seul accessible sans frais
+# sur le palier gratuit une fois les quotas de mistral-small atteints. Largement
+# suffisant pour reformuler des fiches d'événements, puisque tout le contenu lui
+# est fourni. mistral-small-latest ou mistral-large-latest pour comparer.
+LLM_MODEL = os.getenv("LLM_MODEL", "ministral-3b-latest")
 
 # --- Recherche ----------------------------------------------------------------
 TOP_K = int(os.getenv("TOP_K", "5"))
+
+# --- API REST (étape 5) -------------------------------------------------------
+API_TITLE = "API Puls-Events"
+API_VERSION = "1.0.0"
+# La reconstruction de l'index coûte plusieurs minutes de calcul : l'endpoint
+# /rebuild est donc protégé par un jeton. Vide = endpoint désactivé, ce qui est
+# le comportement voulu par défaut (rien d'exposé par accident).
+REBUILD_TOKEN = os.getenv("REBUILD_TOKEN", "")
 
 
 def mistral_api_key() -> str | None:

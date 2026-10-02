@@ -49,6 +49,8 @@ class TestFormatContext:
         assert "UNIQUEMENT à partir des fiches" in system
         assert "N'invente jamais" in system
         assert "RECOPIE les dates" in system      # garde-fou contre les dates inventées
+        assert "Commence DIRECTEMENT" in system   # garde-fou contre les ouvertures négatives
+        assert "Lieu, Ville" in system            # le lieu est obligatoire dans la réponse
         assert "19/09/2026" in system
 
 
@@ -143,8 +145,15 @@ class TestModeDegrade:
     def test_raison_lisible_par_type_d_erreur(self):
         from rag.chain import describe_llm_error
         assert describe_llm_error(RuntimeError("429 Rate limit")) == "limite de débit de l'API atteinte"
+        # Mistral renvoie aussi 429 quand SES serveurs sont saturés : cause distincte,
+        # message distinct, sinon on cherche un problème de quota qui n'existe pas.
+        saturation = RuntimeError(
+            'Error response 429 ... {"message":"Not enough capacity available for this '
+            'request, please retry later.","type":"backend_out_of_capacity","code":"3505"}')
+        assert describe_llm_error(saturation) == "capacité insuffisante côté Mistral, à réessayer"
         assert describe_llm_error(RuntimeError("401 Unauthorized")) == "clé d'API refusée"
         assert describe_llm_error(RuntimeError("Connection timeout")) == "service injoignable"
+        assert describe_llm_error(RuntimeError("MISTRAL_API_KEY absente")) == "clé d'API non configurée"
 
     def test_reponse_normale_marquee_disponible(self, service):
         assert service.ask("concert", reference_date=REF_DATE)["llm_disponible"] is True

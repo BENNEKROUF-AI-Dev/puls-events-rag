@@ -19,10 +19,11 @@ data/index/
 # ... sauf les petits fichiers de test
 !tests/fixtures/*.csv
 
+# Résultats d'évaluation : régénérés par scripts/evaluate.py.
+# En revanche eval/annotations.json EST versionné : c'est la vérité terrain,
+# annotée à la main, et elle doit pouvoir être relue et discutée.
+eval/resultats.json
+
 # Divers
 .DS_Store
 .ipynb_checkpoints/
-
-activate.sp1/
-
-activate.sp1/

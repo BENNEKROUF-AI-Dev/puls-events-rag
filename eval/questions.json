@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "description": "Jeu d'évaluation du chatbot Puls-Events. Les questions sont écrites comme les poserait un habitant : formulations courtes, familières, parfois imprécises. Elles couvrent les usages attendus (thème, lieu, public, période, prix) et trois cas limites qui doivent être refusés proprement.",
+  "note_perimetre": "Périmètre du POC : événements de Loire-Atlantique. Une question hors périmètre n'a pas de bonne réponse : la seule réponse correcte est de le dire.",
+  "questions": [
+    {"id": "q01", "categorie": "thematique", "question": "quels concerts de musique classique à venir ?", "attendu": {"mots_cles": ["classique", "symphon", "orchestre", "quatuor", "piano", "choral"]}},
+    {"id": "q02", "categorie": "thematique", "question": "un concert de jazz pas trop loin", "attendu": {"mots_cles": ["jazz", "blues", "impro"]}},
+    {"id": "q03", "categorie": "thematique", "question": "je cherche une exposition de peinture", "attendu": {"mots_cles": ["exposition", "peinture", "galerie", "art", "tableau"]}},
+    {"id": "q04", "categorie": "thematique", "question": "du théâtre, plutôt une comédie", "attendu": {"mots_cles": ["théâtre", "comédie", "pièce", "spectacle"]}},
+    {"id": "q05", "categorie": "thematique", "question": "un spectacle de danse contemporaine", "attendu": {"mots_cles": ["danse", "chorégraph", "ballet"]}},
+    {"id": "q06", "categorie": "thematique", "question": "des projections de films ou du cinéma en plein air", "attendu": {"mots_cles": ["cinéma", "film", "projection", "court-métrage"]}},
+    {"id": "q07", "categorie": "public", "question": "une sortie à faire avec des enfants", "attendu": {"mots_cles": ["enfant", "famille", "jeune public", "jeunesse", "ans"]}},
+    {"id": "q08", "categorie": "public", "question": "un atelier pour apprendre quelque chose de mes mains", "attendu": {"mots_cles": ["atelier", "initiation", "stage", "apprendre", "fabrication"]}},
+    {"id": "q09", "categorie": "public", "question": "quelque chose à faire seul un soir de semaine", "attendu": {"mots_cles": []}},
+    {"id": "q10", "categorie": "lieu", "question": "qu'est-ce qu'il se passe à Nantes ?", "attendu": {"ville": "Nantes"}},
+    {"id": "q11", "categorie": "lieu", "question": "des événements du côté de Saint-Nazaire", "attendu": {"ville": "Saint-Nazaire"}},
+    {"id": "q12", "categorie": "lieu", "question": "une sortie près de la mer", "attendu": {"mots_cles": ["plage", "mer", "océan", "littoral", "port", "estuaire"]}},
+    {"id": "q13", "categorie": "periode", "question": "des idées pour ce week-end", "attendu": {"mots_cles": []}},
+    {"id": "q14", "categorie": "periode", "question": "qu'est-ce qui se passe pendant les vacances de Noël ?", "attendu": {"mots_cles": ["noël", "décembre", "hiver", "fêtes"]}},
+    {"id": "q15", "categorie": "prix", "question": "des sorties gratuites", "attendu": {"mots_cles": ["gratuit", "libre", "sans réservation", "entrée libre"]}},
+    {"id": "q16", "categorie": "thematique", "question": "un festival de musique", "attendu": {"mots_cles": ["festival", "musique", "scène"]}},
+    {"id": "q17", "categorie": "thematique", "question": "une conférence ou une rencontre autour d'un livre", "attendu": {"mots_cles": ["conférence", "rencontre", "lecture", "livre", "auteur", "littérature"]}},
+    {"id": "q18", "categorie": "hors_perimetre", "question": "un match de football à Marseille", "hors_perimetre": true, "attendu": {"commentaire": "Hors zone (Loire-Atlantique) et hors thème culturel. L'assistant doit dire qu'il n'a rien trouvé plutôt que de proposer un événement sans rapport."}},
+    {"id": "q19", "categorie": "hors_perimetre", "question": "quel temps fera-t-il demain ?", "hors_perimetre": true, "attendu": {"commentaire": "Hors sujet : l'assistant ne dispose que de fiches d'événements. Il doit le dire, et surtout ne pas inventer une météo."}},
+    {"id": "q20", "categorie": "hors_perimetre", "question": "réserve-moi deux places pour le prochain concert", "hors_perimetre": true, "attendu": {"commentaire": "Action impossible : l'assistant recommande, il ne réserve pas. Il doit renvoyer vers le lien de l'événement."}}
+  ]
+}

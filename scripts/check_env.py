@@ -7,6 +7,9 @@ Usage :
 import os
 import sys
 import warnings
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 warnings.filterwarnings("ignore")  # masque les DeprecationWarning de langchain-community
 
@@ -68,10 +71,12 @@ def mistral_imports():
 
 
 def other_imports():
-    import bs4, dotenv, fastapi, pandas, ragas, requests  # noqa: E401,F401
+    import bs4, dotenv, fastapi, httpx, pandas, ragas, requests, uvicorn  # noqa: E401,F401
+    from fastapi.testclient import TestClient  # noqa: F401
     from ragas.metrics import Faithfulness  # noqa: F401
 
-    return f"pandas {pandas.__version__}, fastapi {fastapi.__version__}, ragas {ragas.__version__}"
+    return (f"pandas {pandas.__version__}, fastapi {fastapi.__version__}, "
+            f"uvicorn {uvicorn.__version__}, ragas {ragas.__version__}")
 
 
 def api_key():
@@ -87,8 +92,10 @@ def api_key():
 def mistral_online():
     from langchain_mistralai import ChatMistralAI, MistralAIEmbeddings
 
-    vec = MistralAIEmbeddings(model="mistral-embed").embed_query("test")
-    llm = ChatMistralAI(model="mistral-small-latest", temperature=0)
+    from rag import config
+
+    vec = MistralAIEmbeddings(model=config.MISTRAL_EMBEDDING_MODEL).embed_query("test")
+    llm = ChatMistralAI(model=config.LLM_MODEL, temperature=0)
     answer = llm.invoke("Réponds uniquement par le mot : OK").content
     return f"embedding de dimension {len(vec)}, LLM a répondu « {answer.strip()[:20]} »"
 

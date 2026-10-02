@@ -5,8 +5,8 @@ Projet 7 du parcours Data Scientist. POC d'un chatbot qui répond à des questio
 
 Recherche vectorielle avec Faiss, génération avec Mistral, le tout orchestré par LangChain.
 
-Avancement : étapes 1 à 4 faites (environnement, données, index, chaîne RAG).
-Restent l'API REST, l'évaluation et Docker.
+Avancement : étapes 1 à 5 faites (environnement, données, index, chaîne RAG, API REST et
+évaluation). Reste Docker et la démo.
 
 ## Installation
 
@@ -71,26 +71,75 @@ python scripts/ask.py                                               # mode inter
 
 Par défaut seuls les événements à venir sont proposés. `--all-dates` enlève ce filtre.
 
+**4. Lancer l'API**
+
+```bash
+python scripts/serve.py
+```
+
+Puis http://127.0.0.1:8000/docs pour la documentation interactive, générée par FastAPI
+depuis le code — on peut y poser une question sans écrire de client.
+
+| Appel | Ce qu'il fait |
+|---|---|
+| `GET /health` | état du service, fiche de l'index, avancement d'une reconstruction |
+| `POST /ask` | une question → une réponse rédigée + les sources citées |
+| `POST /rebuild` | retélécharge, renettoie et reconstruit l'index (jeton `X-Rebuild-Token`) |
+
+`/rebuild` répond tout de suite (202) et travaille en arrière-plan : le nouvel index est
+construit à côté puis mis en place par un renommage. L'ancien continue donc de répondre
+pendant toute la reconstruction, et reste en place si elle échoue. Sans `REBUILD_TOKEN`
+dans `.env`, l'endpoint est désactivé.
+
+Pour vérifier un serveur qui tourne, depuis un autre terminal :
+
+```bash
+python scripts/api_test.py
+```
+
+**5. Évaluer**
+
+```bash
+python scripts/evaluate.py --annotate     # annoter à la main ce qui est pertinent
+python scripts/evaluate.py                # noter la recherche : précision@k, rappel@k, MRR
+python scripts/evaluate.py --ragas        # noter la rédaction : Ragas + Mistral
+```
+
+Deux évaluations séparées, parce qu'un RAG peut se tromper à deux endroits : la recherche
+peut rater le bon événement, ou la rédaction peut trahir les fiches. La première se mesure
+sans aucun modèle, ce qui permet de la noter même quand le quota Mistral est épuisé.
+
 ## Tests
 
 ```bash
 pytest
 ```
 
-107 tests, dont la plupart tournent sans Internet, sans clé API et sans modèle : l'API Open
+146 tests, dont la plupart tournent sans Internet, sans clé API et sans modèle : l'API Open
 Agenda est simulée, les embeddings sont remplacés par un calcul déterministe et le LLM par un
 faux modèle. Seul `test_data_quality.py` a besoin des vraies données produites par
 `fetch_data.py` ; il est ignoré tant qu'elles n'existent pas.
 
+Les tests de l'API appellent l'application en mémoire, sans ouvrir de port : `TestClient` de
+FastAPI, avec un index factice de quatre événements. `scripts/api_test.py` fait l'inverse —
+un vrai serveur HTTP sur le vrai index — et sert de vérification de bout en bout.
+
 ## Structure
 
 ```
-src/rag/          config, collecte, nettoyage, découpage, embeddings, index, chaîne RAG
-scripts/          check_env, fetch_data, build_index, ask
+src/rag/          config, collecte, nettoyage, découpage, embeddings, index,
+                  chaîne RAG, pipeline de rafraîchissement, API, métriques
+scripts/          check_env, fetch_data, build_index, ask, serve, api_test, evaluate
 tests/            tests unitaires + jeu de test fictif dans fixtures/
+eval/             les 20 questions d'évaluation et les annotations humaines
 data/             données et index, non versionnés (tout se reconstruit)
 docs/journal.md   mes choix, les anomalies trouvées et les corrections
+docs/commandes.md toutes les commandes, avec ce qu'elles font
 ```
+
+Aucune règle métier ne vit dans `api.py` : il traduit du HTTP vers `chain.py` et retour.
+Même principe pour les scripts, qui ne sont que des interfaces en ligne de commande
+au-dessus du paquet. C'est ce qui rend tout testable sans serveur.
 
 ## Quelques choix à expliquer
 
@@ -113,6 +162,11 @@ bien par Mistral.
 un index approché type IVF ou HNSW qui rate parfois des résultats. Ce serait utile à partir de
 centaines de milliers de vecteurs.
 
+**Pourquoi le MRR en plus de la précision.** Précision et rappel ne disent pas *où* le bon
+résultat apparaît. Deux recherches de précision identique n'ont pas la même valeur selon que
+l'événement pertinent sort en première ou en cinquième position, puisqu'on lit les premières
+propositions et rarement les suivantes.
+
 Le détail est dans `docs/journal.md`.
 
 ## Problèmes courants
@@ -127,7 +181,7 @@ Le détail est dans `docs/journal.md`.
 
 ## À faire
 
-- [ ] API REST FastAPI (`/ask`, `/rebuild`, `/health`) + Swagger
-- [ ] Jeu de test annoté et évaluation avec Ragas
+- [x] API REST FastAPI (`/ask`, `/rebuild`, `/health`) + Swagger
+- [x] Jeu de test annoté et évaluation avec Ragas
 - [ ] Dockerfile et démo locale
 - [ ] Rapport technique et slides de soutenance
