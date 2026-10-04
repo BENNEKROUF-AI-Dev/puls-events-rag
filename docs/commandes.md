@@ -330,7 +330,91 @@ mode dégradé. Aucune mauvaise surprise en direct.
 
 ---
 
-## 11. Quand un message d'erreur apparaît
+## 11. Lancer l'API dans Docker
+
+Docker Desktop doit être installé et démarré (l'icône baleine dans la barre des tâches).
+
+### Construire l'image
+
+```powershell
+docker build -t puls-events .
+```
+
+Comptez cinq à dix minutes la première fois : Docker installe les dépendances et
+télécharge le modèle d'embeddings **à l'intérieur de l'image**. C'est long une fois, puis
+le conteneur démarre sans réseau.
+
+Les reconstructions suivantes sont rapides tant que `requirements.txt` ne change pas :
+Docker réutilise la couche des dépendances.
+
+### Démarrer
+
+```powershell
+docker run -p 8000:8000 --env-file .env -v "${PWD}/data:/app/data" puls-events
+```
+
+Puis **http://127.0.0.1:8000/docs**, exactement comme en local.
+
+Les trois options comptent :
+
+| Option | Ce qu'elle fait |
+|---|---|
+| `-p 8000:8000` | relie le port 8000 de ta machine à celui du conteneur |
+| `--env-file .env` | passe la clé Mistral au démarrage, sans jamais l'écrire dans l'image |
+| `-v "${PWD}/data:/app/data"` | partage l'index : le conteneur le lit depuis ton disque |
+
+### Ou en une seule commande
+
+```powershell
+docker compose up --build
+```
+
+`docker-compose.yml` décrit les trois options ci-dessus, il n'y a plus rien à retenir.
+`Ctrl+C` pour arrêter, puis `docker compose down` pour nettoyer.
+
+### Vérifier que le conteneur est sain
+
+```powershell
+docker ps
+```
+
+La colonne STATUS affiche `healthy` au bout d'une quarantaine de secondes. C'est la sonde
+définie dans le Dockerfile : Docker interroge `/health` toutes les 30 secondes.
+
+```powershell
+docker logs puls-events-api          # ce que le serveur affiche
+docker logs -f puls-events-api       # en continu
+```
+
+Le test complet fonctionne depuis l'hôte, le conteneur étant exposé sur le même port :
+
+```powershell
+python scripts\api_test.py
+```
+
+### Lancer les tests dans le conteneur
+
+```powershell
+docker run --rm puls-events pytest
+```
+
+Prouve que l'image contient un environnement complet et fonctionnel, indépendamment de ta
+machine. C'est le vrai argument de Docker : « ça marche chez moi » devient vérifiable.
+
+### Ce que l'image contient, et ce qu'elle ne contient pas
+
+| Dans l'image | Monté depuis l'hôte |
+|---|---|
+| Python, les dépendances, le code | l'index Faiss et les données nettoyées |
+| Le modèle d'embeddings (220 Mo) | la clé API, passée par `--env-file` |
+
+L'index est exclu volontairement : c'est une donnée reconstructible de plusieurs dizaines de
+mégaoctets, qui change à chaque rafraîchissement. L'embarquer obligerait à reconstruire
+l'image à chaque mise à jour des données.
+
+---
+
+## 12. Quand un message d'erreur apparaît
 
 | Message | Ce que ça veut dire | Quoi faire |
 |---|---|---|
@@ -348,3 +432,7 @@ mode dégradé. Aucune mauvaise surprise en direct.
 | `Aucun serveur sur http://...` | le serveur n'est pas lancé | `python scripts\serve.py` dans un autre terminal |
 | `address already in use` | le port 8000 est occupé | `python scripts\serve.py --port 9000` |
 | `Aucune annotation` | jeu d'évaluation pas encore annoté | `python scripts\evaluate.py --annotate` |
+| `Cannot connect to the Docker daemon` | Docker Desktop n'est pas lancé | l'ouvrir et attendre que la baleine se stabilise |
+| `port is already allocated` | le port 8000 est pris par un autre conteneur | `docker ps` puis `docker stop <nom>`, ou changer `-p 9000:8000` |
+| conteneur `unhealthy` dans `docker ps` | l'API ne répond pas sur `/health` | `docker logs` ; le plus souvent l'index n'est pas monté |
+| `Aucun index dans /app/data/index` | le volume n'a pas été monté, ou l'index n'existe pas | vérifier l'option `-v`, et avoir lancé `build_index.py` avant |

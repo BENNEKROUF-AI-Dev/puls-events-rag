@@ -78,6 +78,11 @@ LOCAL_EMBEDDING_MODEL = os.getenv(
 MISTRAL_EMBEDDING_MODEL = os.getenv("MISTRAL_EMBEDDING_MODEL", "mistral-embed")
 EMBEDDING_BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", "64"))
 
+# Où fastembed range le modèle téléchargé. Laissé vide, il choisit lui-même un
+# dossier temporaire — ce qui convient sur un poste, mais pas dans un conteneur :
+# l'image embarque le modèle à un emplacement fixe pour démarrer sans réseau.
+EMBEDDING_CACHE_DIR = os.getenv("EMBEDDING_CACHE_DIR") or None
+
 # --- Génération (LLM) ---------------------------------------------------------
 # ministral-3b : le plus petit modèle Mistral, et le seul accessible sans frais
 # sur le palier gratuit une fois les quotas de mistral-small atteints. Largement

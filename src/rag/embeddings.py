@@ -58,7 +58,12 @@ def get_embeddings(provider: str | None = None, model: str | None = None) -> Emb
         except ImportError as exc:  # pragma: no cover
             raise RuntimeError("fastembed manquant : pip install -r requirements.txt") from exc
         logger.info("Embeddings locaux : %s (premier lancement = téléchargement du modèle)", model)
-        return FastEmbedEmbeddings(model_name=model, batch_size=config.EMBEDDING_BATCH_SIZE)
+        options = {"model_name": model, "batch_size": config.EMBEDDING_BATCH_SIZE}
+        if config.EMBEDDING_CACHE_DIR:
+            # Emplacement fixe du modèle. Sans cela fastembed choisit un dossier
+            # temporaire, et un conteneur retéléchargerait 220 Mo à chaque démarrage.
+            options["cache_dir"] = config.EMBEDDING_CACHE_DIR
+        return FastEmbedEmbeddings(**options)
 
     if provider == "test":
         return HashingEmbeddings()

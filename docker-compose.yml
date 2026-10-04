@@ -1,0 +1,31 @@
+# Lancement de l'API en une commande :
+#
+#   docker compose up --build
+#
+# Puis http://127.0.0.1:8000/docs
+#
+# Ce fichier évite d'avoir à retenir les options de `docker run` : le port, le
+# fichier d'environnement et le montage de l'index sont décrits une fois ici.
+
+services:
+  api:
+    build: .
+    image: puls-events:latest
+    container_name: puls-events-api
+
+    ports:
+      # hôte:conteneur. 8000 côté hôte peut être changé sans toucher à l'image.
+      - "8000:8000"
+
+    # La clé Mistral et les réglages viennent du .env, lu au démarrage.
+    # Ils ne sont jamais écrits dans l'image.
+    env_file:
+      - .env
+
+    volumes:
+      # L'index Faiss et les données nettoyées restent sur l'hôte. Le conteneur
+      # les lit ; il n'a pas à les reconstruire pour démarrer.
+      - ./data:/app/data
+
+    # Redémarre si le processus tombe, mais pas si l'utilisateur l'arrête.
+    restart: unless-stopped

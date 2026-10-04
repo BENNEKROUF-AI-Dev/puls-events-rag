@@ -5,8 +5,8 @@ Projet 7 du parcours Data Scientist. POC d'un chatbot qui répond à des questio
 
 Recherche vectorielle avec Faiss, génération avec Mistral, le tout orchestré par LangChain.
 
-Avancement : étapes 1 à 5 faites (environnement, données, index, chaîne RAG, API REST et
-évaluation). Reste Docker et la démo.
+Avancement : étapes 1 à 6 faites (environnement, données, index, chaîne RAG, API REST,
+évaluation, Docker). Restent le rapport technique et les slides de soutenance.
 
 ## Installation
 
@@ -109,13 +109,33 @@ Deux évaluations séparées, parce qu'un RAG peut se tromper à deux endroits :
 peut rater le bon événement, ou la rédaction peut trahir les fiches. La première se mesure
 sans aucun modèle, ce qui permet de la noter même quand le quota Mistral est épuisé.
 
+**6. Dans Docker**
+
+```bash
+docker compose up --build
+```
+
+Puis http://127.0.0.1:8000/docs, comme en local. Comptez cinq à dix minutes la première
+fois : l'image installe les dépendances et embarque le modèle d'embeddings, ce qui lui
+permet ensuite de démarrer sans réseau.
+
+L'index n'est pas dans l'image, il est monté depuis `./data` : c'est une donnée
+reconstructible de plusieurs dizaines de mégaoctets, qui change à chaque rafraîchissement.
+La clé Mistral est passée au démarrage par `--env-file`, jamais écrite dans une couche de
+l'image.
+
+```bash
+docker run --rm puls-events pytest    # les tests, à l'intérieur de l'image
+docker ps                             # la colonne STATUS passe à « healthy »
+```
+
 ## Tests
 
 ```bash
 pytest
 ```
 
-146 tests, dont la plupart tournent sans Internet, sans clé API et sans modèle : l'API Open
+159 tests, dont la plupart tournent sans Internet, sans clé API et sans modèle : l'API Open
 Agenda est simulée, les embeddings sont remplacés par un calcul déterministe et le LLM par un
 faux modèle. Seul `test_data_quality.py` a besoin des vraies données produites par
 `fetch_data.py` ; il est ignoré tant qu'elles n'existent pas.
@@ -127,6 +147,8 @@ un vrai serveur HTTP sur le vrai index — et sert de vérification de bout en b
 ## Structure
 
 ```
+Dockerfile        image de l'API, construite en deux étapes
+docker-compose.yml  le lancement en une commande
 src/rag/          config, collecte, nettoyage, découpage, embeddings, index,
                   chaîne RAG, pipeline de rafraîchissement, API, métriques
 scripts/          check_env, fetch_data, build_index, ask, serve, api_test, evaluate
@@ -183,5 +205,5 @@ Le détail est dans `docs/journal.md`.
 
 - [x] API REST FastAPI (`/ask`, `/rebuild`, `/health`) + Swagger
 - [x] Jeu de test annoté et évaluation avec Ragas
-- [ ] Dockerfile et démo locale
+- [x] Dockerfile et démo locale
 - [ ] Rapport technique et slides de soutenance

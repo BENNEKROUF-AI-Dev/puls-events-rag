@@ -693,3 +693,83 @@ erreur fatale — et la cause était à trois bibliothèques de distance. C'est 
 figées.
 
 Total : 149 tests.
+
+## Étape 6 — Docker
+
+### Ce que l'image embarque, et ce qu'elle laisse dehors
+
+| Dans l'image | Monté depuis l'hôte |
+|---|---|
+| Python, les dépendances, le code | l'index Faiss et les données nettoyées |
+| Le modèle d'embeddings (220 Mo) | la clé API Mistral, passée par `--env-file` |
+
+Deux décisions, opposées en apparence :
+
+**Le modèle d'embeddings est embarqué.** Il ne change jamais, et sans lui le conteneur
+réclamerait 220 Mo à huggingface.co à son premier démarrage — une démonstration hors ligne
+deviendrait impossible, et un réseau lent se traduirait par une première question
+interminable. `HF_HUB_OFFLINE=1` est posé dans l'image : si le modèle manquait malgré tout,
+l'erreur serait immédiate et explicite, au lieu d'un téléchargement silencieux.
+
+**L'index reste dehors.** C'est l'inverse : une donnée reconstructible de plusieurs dizaines
+de mégaoctets, qui change à chaque rafraîchissement. L'embarquer obligerait à reconstruire
+l'image à chaque mise à jour des données, pour un résultat périmé dès le lendemain.
+
+La règle derrière les deux : **ce qui est stable et coûteux à obtenir entre dans l'image ;
+ce qui change souvent reste à l'extérieur.**
+
+### Le modèle a un emplacement fixe
+
+fastembed choisit sinon un dossier temporaire. Dans un conteneur, cela signifierait un
+retéléchargement à chaque démarrage — sans erreur, juste très lentement, ce qui est la pire
+forme de panne. Un réglage `EMBEDDING_CACHE_DIR` a donc été ajouté, utilisé à la fois par
+l'étape de construction et par l'exécution, pour que les deux pointent au même endroit.
+
+Trois tests figent ce comportement, dont un qui vérifie qu'en l'absence de réglage le
+paramètre n'est **pas** transmis : passer `None` à fastembed le ferait écrire dans le dossier
+courant, ce qui n'est pas la même chose que le laisser décider.
+
+### Construction en deux étapes
+
+La première installe `build-essential` — faiss-cpu compile des extensions C — et les
+dépendances dans un environnement virtuel. La seconde ne récupère que cet environnement et
+le modèle. Les outils de compilation ne sont jamais livrés.
+
+Les dépendances sont copiées et installées **avant** le code. Tant que `requirements.txt` ne
+bouge pas, Docker réutilise cette couche : modifier une ligne de `chain.py` reconstruit
+l'image en quelques secondes au lieu de dix minutes.
+
+### Trois détails qui font échouer silencieusement
+
+**`--host 0.0.0.0` et non `127.0.0.1`.** À l'intérieur d'un conteneur, `127.0.0.1` ne désigne
+que le conteneur lui-même. Le serveur démarrerait normalement, afficherait ses journaux
+habituels, et aucune requête venant de l'hôte n'arriverait jamais.
+
+**`.env` dans le `.dockerignore`.** Une clé copiée dans une couche d'image y reste lisible
+par quiconque récupère l'image, même si un `RUN rm` la supprime ensuite : les couches sont
+empilées, pas réécrites. La clé est passée au démarrage.
+
+**Un utilisateur sans privilèges.** Un conteneur n'a aucune raison de tourner en root.
+Contrepartie assumée : si l'on appelle `/rebuild` depuis le conteneur, le volume monté doit
+être accessible en écriture à l'uid 1000. Pour la démonstration, qui ne fait que lire
+l'index, la question ne se pose pas.
+
+### Une sonde plutôt qu'un pari
+
+`HEALTHCHECK` interroge `/health` toutes les 30 secondes, avec 40 secondes de grâce au
+démarrage — le temps de charger l'index. `docker ps` affiche alors `healthy`, ce qui dit
+quelque chose de plus utile que « le processus tourne » : l'API répond et son index est là.
+
+C'est la justification concrète d'avoir écrit `/health` à l'étape 5 : il sert à l'extérieur
+du code.
+
+### Ce que Docker prouve réellement
+
+```
+docker run --rm puls-events pytest
+```
+
+Les 159 tests s'exécutent dans l'image, indépendamment de la machine hôte. C'est le vrai
+argument : « ça marche chez moi » devient vérifiable par quelqu'un d'autre.
+
+Total : 159 tests.

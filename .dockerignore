@@ -1,0 +1,33 @@
+# Ce que Docker ne doit pas envoyer au moteur de construction.
+# Tout ce qui est ici est soit volumineux, soit secret, soit reconstruit dans l'image.
+
+# Environnements virtuels : les dépendances sont réinstallées dans l'image,
+# et un venv Windows ne fonctionnerait de toute façon pas sous Linux.
+venv/
+.venv/
+env/
+activate.sp1/
+
+# Secrets : la clé API est passée au démarrage par --env-file, jamais copiée
+# dans une couche de l'image, où elle resterait lisible par quiconque la récupère.
+.env
+
+# Données et index : montés depuis l'hôte (voir le Dockerfile).
+data/
+eval/resultats.json
+
+# Historique Git : inutile dans l'image, et parfois volumineux.
+.git/
+.github/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Documentation et fichiers de travail
+docs/
+*.md
+*.zip
+.DS_Store
+.ipynb_checkpoints/
