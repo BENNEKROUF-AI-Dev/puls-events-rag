@@ -773,3 +773,33 @@ Les 159 tests s'exécutent dans l'image, indépendamment de la machine hôte. C'
 argument : « ça marche chez moi » devient vérifiable par quelqu'un d'autre.
 
 Total : 159 tests.
+
+### Mesures relevées sur l'image construite
+
+| | |
+|---|---|
+| Temps de construction, cache vide | 3 min 38 s |
+| Taille sur disque | 1,92 Go |
+| Taille compressée, celle qui transite sur le réseau | 548 Mo |
+| Tests exécutés dans l'image | 149 réussis, 10 ignorés |
+| Vérifications de l'API sur le conteneur | 23 / 23 |
+| Première question | 4,0 s |
+| Questions suivantes | 0,9 à 1,5 s |
+
+Répartition de la taille : Python et le système d'exploitation pour environ 150 Mo, les
+dépendances scientifiques (faiss, onnxruntime, pandas, numpy) pour l'essentiel du reste, le
+modèle d'embeddings pour 220 Mo. Le code du projet pèse moins de 100 Ko. Deux leviers
+existent pour réduire l'image, non appliqués ici : retirer les dépendances d'évaluation
+(ragas, instructor, openai ne servent qu'au développement) et partir d'une base Alpine, au
+prix d'une compilation nettement plus longue.
+
+**Les 10 tests ignorés sont ceux de la qualité des données**, exclues de l'image par le
+`.dockerignore`. C'est le comportement voulu : ces tests contrôlent les données, pas le code,
+et ils se réactivent dès que le volume est monté.
+
+**L'écart entre la première question et les suivantes** — 4,0 s contre 1,0 s — est le
+chargement de l'index en mémoire, qui n'a lieu qu'une fois. C'est le chargement paresseux de
+l'étape 5, mesurable de l'extérieur.
+
+Le conteneur a tourné trois heures sans intervention, sonde au vert, index lu depuis le
+volume monté et clé API transmise au démarrage : aucune des deux n'est dans l'image.
