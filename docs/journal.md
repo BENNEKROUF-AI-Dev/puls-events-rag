@@ -803,3 +803,85 @@ l'étape 5, mesurable de l'extérieur.
 
 Le conteneur a tourné trois heures sans intervention, sonde au vert, index lu depuis le
 volume monté et clé API transmise au démarrage : aucune des deux n'est dans l'image.
+
+## Revue finale avant soutenance — suite à un audit externe
+
+Un audit technique externe a signalé une incohérence possible sur `/health`. Vérification
+faite, elle est réelle, et elle était plus gênante que prévu.
+
+### Le défaut : une sonde qui annonçait prêt un service incapable de répondre
+
+`/health` renvoyait **toujours** HTTP 200. Avec un index absent, il renvoyait 200 et un corps
+disant `"statut": "index absent"`. Or le `HEALTHCHECK` du Dockerfile teste précisément
+`status_code == 200`. Conséquence : **Docker marquait `healthy` un conteneur dont `/ask`
+répondait 503 à toutes les questions.** Le corps disait la vérité, le code HTTP non, et c'est
+le code HTTP que lisent les machines.
+
+Correction : `/health` renvoie 503 quand l'index manque.
+
+Deux points de conception que je tiens à justifier.
+
+**Le corps est renvoyé avec le 503, et c'est volontaire.** J'ai écarté `HTTPException`, qui
+aurait remplacé la fiche par un simple message d'erreur. Sans index, c'est justement le
+moment où l'on a besoin de lire le champ `reconstruction` pour suivre l'avancement du
+rebuild. J'ai donc utilisé le paramètre `Response` de FastAPI pour fixer le code sans perdre
+le corps. Vérifié : le 503 porte toujours la fiche complète.
+
+**Je n'ai pas séparé `/liveness` et `/health`.** La question se pose, puisque le conteneur
+devient `unhealthy` pendant qu'on reconstruit un index depuis zéro. Mais Docker ne redémarre
+pas un conteneur `unhealthy` sans orchestrateur : il reste en marche, `/rebuild` fonctionne,
+et `/health` reste interrogeable. Un POC à un seul service n'a donc rien à gagner à une route
+de plus, à ses tests et à sa documentation. Noté comme perspective si le projet passait sous
+orchestrateur.
+
+### Le `start-period` était faux, et son commentaire aussi
+
+Le Dockerfile accordait 40 secondes de grâce « le temps de charger l'index ». Or l'index
+n'est **pas** chargé au démarrage : il l'est à la première question, c'est le chargement
+paresseux de l'étape 5. Le commentaire décrivait un comportement que le code n'a pas.
+
+Mesure : **1,59 s** entre le lancement d'uvicorn et la première réponse de `/health`, soit le
+temps des imports. Valeur ramenée à 15 s — dix fois la marge nécessaire — et commentaire
+corrigé. Effet utile : un conteneur sans index est signalé en 75 s au lieu de 105 s.
+
+### Un ordre de contrôles qui masquait la vraie cause
+
+En lançant la suite dans un environnement où `langchain_mistralai` n'était pas installé, deux
+tests ont échoué sur `ModuleNotFoundError` alors qu'ils attendaient un message sur
+`MISTRAL_API_KEY`. En cause, dans `get_embeddings` et dans `get_llm` : l'import était placé
+**avant** le contrôle de la clé. La branche « local » juste au-dessus, elle, traduisait déjà
+son import manquant en message actionnable — l'incohérence était dans le même fichier.
+
+Les deux lignes ont été inversées. Vérifié en bloquant l'import par un `MetaPathFinder` :
+les deux fonctions renvoient maintenant « MISTRAL_API_KEY absente » au lieu de l'erreur
+d'import. C'est la même leçon que le 429 : **l'ordre des branches d'erreur détermine ce que
+l'utilisateur croit avoir comme problème.**
+
+### Vérifications effectuées
+
+Contre un vrai serveur uvicorn, dans les deux états :
+
+| | Index présent | Index absent |
+|---|---|---|
+| `GET /health` | 200, `statut: ok` | 503, `statut: index absent`, fiche intacte |
+| `POST /ask` | 200 | 503 avec message actionnable |
+| Commande du `HEALTHCHECK` | sortie 0 | sortie 1 |
+| `GET /docs` | 200 | 200 |
+| `POST /rebuild` sans jeton | 403 | — |
+
+Suite de tests : **162 réussis, 0 échec, 0 ignoré** (159 avant la revue, plus 3 tests neufs
+sur `/health` : le 200, le 503 avec corps, et le fait qu'un LLM en panne ne rende pas le
+conteneur malade). Un test existant a été renforcé pour contrôler le code HTTP et non
+seulement le corps.
+
+**Docker n'était pas disponible** dans l'environnement de revue : le client est installé mais
+le démon n'est pas joignable. Aucun build ni aucun conteneur n'a donc été rejoué. Vérification
+statique seulement : absence de secret et de copie de `.env` dans le Dockerfile, `USER puls`,
+`HEALTHCHECK` à 15 s, écoute sur `0.0.0.0`, `.env` présent dans `.dockerignore`, et
+`docker compose config` validé. Les chiffres d'image de l'étape 6 restent ceux mesurés alors.
+
+### Ce que je n'ai pas touché
+
+Faiss, LangChain, Mistral, les embeddings, le prompt, le découpage, la bascule atomique de
+`/rebuild` et sa protection par jeton : inchangés. La revue visait à stabiliser, pas à
+reprendre les choix techniques.

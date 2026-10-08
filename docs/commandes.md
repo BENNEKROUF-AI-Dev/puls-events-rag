@@ -140,7 +140,7 @@ python scripts\serve.py --port 9000     # si le port 8000 est déjà pris
 
 | Appel | Ce qu'il fait |
 |---|---|
-| `GET /health` | l'index est-il en place, quel modèle, combien de vecteurs |
+| `GET /health` | l'index est-il en place, quel modèle, combien de vecteurs. Répond `200` avec index, `503` sans — c'est ce code que lit la sonde Docker |
 | `POST /ask` | une question → une réponse rédigée + les sources citées |
 | `POST /rebuild` | retélécharge, renettoie et reconstruit l'index (jeton requis) |
 
@@ -249,7 +249,7 @@ Le rapport complet est écrit dans `eval/resultats.json`.
 pytest
 ```
 
-146 tests en une dizaine de secondes. La plupart tournent sans Internet, sans clé API et
+162 tests en une dizaine de secondes. La plupart tournent sans Internet, sans clé API et
 sans modèle, parce que l'API Open Agenda, les embeddings et le modèle de langage sont
 remplacés par des doublures.
 
@@ -315,7 +315,7 @@ Puis le navigateur sur **http://127.0.0.1:8000/docs**, et une question depuis
 
 Ce qu'on dit pendant que ça tourne :
 
-1. **`pytest`** : « 146 tests, dont la plupart sans Internet ni clé API. »
+1. **`pytest`** : « 162 tests, dont la plupart sans Internet ni clé API. »
 2. **`ask.py`** : « Le premier résultat est un concert de musique de chambre alors que le
    mot *classique* n'apparaît pas dans la fiche. C'est la recherche par le sens. »
 3. **le rapport de nettoyage** : « Voilà ce que le nettoyage a retiré, règle par règle. »
@@ -378,8 +378,15 @@ docker compose up --build
 docker ps
 ```
 
-La colonne STATUS affiche `healthy` au bout d'une quarantaine de secondes. C'est la sonde
-définie dans le Dockerfile : Docker interroge `/health` toutes les 30 secondes.
+La colonne STATUS affiche `healthy` en quelques secondes. C'est la sonde définie dans le
+Dockerfile : Docker interroge `/health` toutes les 30 secondes, après un délai de grâce de
+15 secondes au démarrage (l'API répond en 1,6 s, l'index étant chargé à la première
+question et non au boot).
+
+`healthy` signifie que l'index est en place. Sans index monté, `/health` renvoie `503` et le
+conteneur passe `unhealthy` : c'est voulu, un conteneur qui ne peut répondre à aucune
+question ne doit pas s'annoncer prêt. En revanche un quota Mistral épuisé ne le rend **pas**
+`unhealthy` — la sonde ne contacte jamais Mistral, et `/ask` bascule en mode dégradé.
 
 ```powershell
 docker logs puls-events-api          # ce que le serveur affiche

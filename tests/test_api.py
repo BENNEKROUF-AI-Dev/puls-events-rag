@@ -48,6 +48,40 @@ class TestHealth:
         assert body["index"]["nombre_documents"] > 0
         assert body["reconstruction"]["en_cours"] is False
 
+    def test_503_quand_l_index_manque(self, tmp_path):
+        """La sonde doit échouer quand le service ne peut pas rendre son service.
+
+        Sans ce 503, le HEALTHCHECK du Dockerfile — qui teste `status_code == 200`
+        — marquerait « healthy » un conteneur dont /ask répond 503 à toutes les
+        questions. C'est l'incohérence relevée par l'audit.
+        """
+        service = RAGService(provider="test", index_dir=tmp_path / "vide", only_upcoming=False)
+        app.dependency_overrides[get_service] = lambda: service
+        with TestClient(app) as test_client:
+            response = test_client.get("/health")
+            assert response.status_code == 503
+            body = response.json()
+            assert body["statut"] == "index absent"
+            assert body["index_disponible"] is False
+            # Le corps reste renvoyé avec le 503 : sans index, c'est justement là
+            # qu'on a besoin de lire l'avancement de la reconstruction.
+            assert "reconstruction" in body
+        app.dependency_overrides.clear()
+
+    def test_le_schema_declare_les_deux_codes(self, client):
+        """La documentation générée annonce le 503, elle ne le découvre pas."""
+        reponses = client.get("/openapi.json").json()["paths"]["/health"]["get"]["responses"]
+        assert set(reponses) >= {"200", "503"}
+
+    def test_la_sonde_ne_depend_pas_du_llm(self, client, rag_service):
+        """Un LLM en panne ne rend pas le conteneur malade : seul l'index compte."""
+        class LLMEnPanne:
+            def invoke(self, messages):
+                raise RuntimeError("429 Rate limit exceeded")
+
+        rag_service._llm = LLMEnPanne()
+        assert client.get("/health").status_code == 200
+
     def test_la_racine_renvoie_vers_la_documentation(self, client):
         response = client.get("/", follow_redirects=False)
         assert response.status_code in (307, 302)
@@ -124,7 +158,9 @@ class TestIndexAbsent:
         service = RAGService(provider="test", index_dir=tmp_path / "vide", only_upcoming=False)
         app.dependency_overrides[get_service] = lambda: service
         with TestClient(app) as client:
-            assert client.get("/health").json()["index_disponible"] is False
+            etat = client.get("/health")
+            assert etat.status_code == 503, "/health et /ask doivent dire la même chose"
+            assert etat.json()["index_disponible"] is False
             response = client.post("/ask", json={"question": "un concert"})
             assert response.status_code == 503
             assert "build_index" in response.json()["detail"]

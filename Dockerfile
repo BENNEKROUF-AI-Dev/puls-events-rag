@@ -73,9 +73,18 @@ USER puls
 
 EXPOSE 8000
 
-# Sonde de vivacité : Docker interroge /health et marque le conteneur « unhealthy »
-# s'il ne répond plus. 40 s de grâce au démarrage, le temps de charger l'index.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+# Sonde d'aptitude : Docker interroge /health et marque le conteneur « unhealthy »
+# s'il ne répond plus 200. /health renvoie 503 quand l'index manque, donc un
+# conteneur sans index est signalé malade au lieu d'être annoncé prêt à tort.
+#
+# 15 s de grâce au démarrage : l'index est chargé paresseusement, pas au boot, et
+# /health répond en 1,6 s (mesuré) — le temps des imports. 15 s laissent dix fois
+# la marge nécessaire sans retarder le diagnostic.
+#
+# La sonde ne dépend pas de Mistral : /health ne lit qu'un fichier local. Un quota
+# d'API épuisé ne doit pas rendre le conteneur « unhealthy » — /ask passe alors en
+# mode dégradé et continue de répondre.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD python -c "import httpx,sys; sys.exit(0 if httpx.get('http://127.0.0.1:8000/health', timeout=4).status_code == 200 else 1)"
 
 # 0.0.0.0 et non 127.0.0.1 : à l'intérieur du conteneur, 127.0.0.1 ne désigne que

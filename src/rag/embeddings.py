@@ -70,10 +70,13 @@ def get_embeddings(provider: str | None = None, model: str | None = None) -> Emb
 
     if provider == "mistral":
         model = model or config.MISTRAL_EMBEDDING_MODEL
-        from langchain_mistralai import MistralAIEmbeddings
-
+        # La clé d'abord, l'import ensuite. Dans l'autre ordre, une installation
+        # incomplète renvoie un ModuleNotFoundError au lieu de nommer ce qui
+        # manque vraiment. Même principe que la branche « local » ci-dessus, qui
+        # traduit déjà son import manquant en message actionnable.
         if not config.mistral_api_key():
             raise RuntimeError("MISTRAL_API_KEY absente : renseignez-la dans .env")
+        from langchain_mistralai import MistralAIEmbeddings
         logger.info("Embeddings via l'API Mistral : %s", model)
         return MistralAIEmbeddings(model=model, max_retries=5)
 

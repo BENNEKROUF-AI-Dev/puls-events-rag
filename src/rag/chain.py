@@ -110,10 +110,12 @@ def get_llm(model: str | None = None, temperature: float = 0.0) -> BaseChatModel
     Température à 0 : la tâche est de restituer fidèlement des fiches, pas d'inventer.
     Toute créativité se paie ici en erreurs de dates.
     """
-    from langchain_mistralai import ChatMistralAI
-
+    # La clé d'abord, l'import ensuite : dans l'autre ordre, une installation
+    # incomplète masque la vraie cause derrière un ModuleNotFoundError.
     if not config.mistral_api_key():
         raise RuntimeError("MISTRAL_API_KEY absente : renseignez-la dans .env")
+    from langchain_mistralai import ChatMistralAI
+
     return ChatMistralAI(model=model or config.LLM_MODEL, temperature=temperature, max_retries=3)
 
 

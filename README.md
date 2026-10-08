@@ -82,7 +82,7 @@ depuis le code — on peut y poser une question sans écrire de client.
 
 | Appel | Ce qu'il fait |
 |---|---|
-| `GET /health` | état du service, fiche de l'index, avancement d'une reconstruction |
+| `GET /health` | état du service, fiche de l'index, avancement d'une reconstruction. **200** si l'index est là, **503** sinon — avec la fiche dans les deux cas |
 | `POST /ask` | une question → une réponse rédigée + les sources citées |
 | `POST /rebuild` | retélécharge, renettoie et reconstruit l'index (jeton `X-Rebuild-Token`) |
 
@@ -135,7 +135,7 @@ docker ps                             # la colonne STATUS passe à « healthy »
 pytest
 ```
 
-159 tests, dont la plupart tournent sans Internet, sans clé API et sans modèle : l'API Open
+162 tests, dont la plupart tournent sans Internet, sans clé API et sans modèle : l'API Open
 Agenda est simulée, les embeddings sont remplacés par un calcul déterministe et le LLM par un
 faux modèle. Seul `test_data_quality.py` a besoin des vraies données produites par
 `fetch_data.py` ; il est ignoré tant qu'elles n'existent pas.

@@ -1,7 +1,7 @@
 """API REST du chatbot Puls-Events (étape 5).
 
 Trois points d'entrée :
-    GET  /health          état du service et fiche de l'index
+    GET  /health          état du service et fiche de l'index (200, ou 503 sans index)
     POST /ask             une question -> une réponse + ses sources
     POST /rebuild         reconstruit l'index (protégé par un jeton)
 
@@ -27,7 +27,8 @@ import threading
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timezone
 
-from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, status
+from fastapi import (BackgroundTasks, Depends, FastAPI, Header, HTTPException, Response,
+                     status)
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
@@ -125,9 +126,10 @@ rebuild_lock = threading.Lock()
 async def lifespan(app: FastAPI):
     """Prépare le service au démarrage et l'oublie à l'arrêt.
 
-    L'index n'est volontairement pas chargé ici : le chargement est paresseux,
-    ce qui permet à /health de répondre même sans index (utile pour un
-    conteneur qui démarre avant que l'index soit construit).
+    L'index n'est volontairement pas chargé ici : le chargement est paresseux.
+    Le démarrage reste donc immédiat (mesuré à 1,6 s, le temps des imports), et
+    un conteneur lancé avant que l'index existe répond quand même sur /health —
+    avec un 503 et la fiche d'avancement de la reconstruction, pas un plantage.
     """
     global service
     service = RAGService()
@@ -159,14 +161,35 @@ def racine():
     return RedirectResponse("/docs")
 
 
-@app.get("/health", response_model=Etat, summary="État du service")
-def health(rag: RAGService = Depends(get_service)):
+@app.get("/health", response_model=Etat, summary="État du service",
+         responses={503: {"model": Etat,
+                          "description": "Index indisponible : /ask ne peut pas répondre."}})
+def health(response: Response, rag: RAGService = Depends(get_service)):
     """Vérifie que l'index est en place et renvoie sa fiche descriptive.
 
-    Utilisé comme sonde de vivacité par Docker (étape 6).
+    Utilisé comme sonde d'aptitude par Docker (étape 6). Le code HTTP reflète la
+    capacité réelle à servir une question :
+
+    - **200** l'index est là, `/ask` peut répondre ;
+    - **503** l'index manque ; `/ask` renverrait 503 lui aussi.
+
+    Sans ce 503, Docker marquerait « healthy » un conteneur incapable de
+    répondre à la moindre question : la sonde doit échouer quand le service ne
+    peut pas rendre son service.
+
+    Le corps est renvoyé **dans les deux cas**, et c'est volontaire : quand
+    l'index manque, c'est précisément là qu'on a besoin de lire l'avancement de
+    la reconstruction (`reconstruction`). Un `HTTPException` aurait remplacé la
+    fiche par un simple message d'erreur.
+
+    Cette sonde ne contacte jamais Mistral : elle ne lit qu'un fichier local et
+    la configuration. Le modèle de rédaction peut être en panne sans que le
+    conteneur soit déclaré malade — c'est le rôle du mode dégradé de `/ask`.
     """
     info = rag.health()
     index_disponible = bool(info.pop("index_disponible", False))
+    if not index_disponible:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     return Etat(
         statut="ok" if index_disponible else "index absent",
         index_disponible=index_disponible,
