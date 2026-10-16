@@ -206,4 +206,4 @@ Le détail est dans `docs/journal.md`.
 - [x] API REST FastAPI (`/ask`, `/rebuild`, `/health`) + Swagger
 - [x] Jeu de test annoté et évaluation avec Ragas
 - [x] Dockerfile et démo locale
-- [ ] Rapport technique et slides de soutenance
+- [x] Rapport technique et slides de soutenance
