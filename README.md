@@ -5,8 +5,35 @@ Projet 7 du parcours Data Scientist. POC d'un chatbot qui répond à des questio
 
 Recherche vectorielle avec Faiss, génération avec Mistral, le tout orchestré par LangChain.
 
-Avancement : étapes 1 à 6 faites (environnement, données, index, chaîne RAG, API REST,
-évaluation, Docker). Restent le rapport technique et les slides de soutenance.
+Avancement : toutes les étapes sont faites (environnement, données, index, chaîne RAG,
+API REST, évaluation, Docker, rapport technique, soutenance).
+
+**Rapport technique : [docs/rapport_technique.pdf](docs/rapport_technique.pdf)**
+
+## Livrables
+
+| Livrable | Où le trouver |
+|---|---|
+| Système RAG fonctionnel | `src/rag/`, `scripts/` |
+| API REST (FastAPI) | `src/rag/api.py`, documentation sur `/docs` |
+| Rapport technique | [`docs/rapport_technique.pdf`](docs/rapport_technique.pdf), ce README, `docs/journal.md` |
+| Tests unitaires | `tests/` (162 tests) |
+| Jeu de test annoté | `eval/questions.json` (20 questions) et `eval/annotations.json` |
+
+## Résultats en bref
+
+Évaluation sur 17 questions annotées à la main (3 autres sont hors périmètre) :
+
+| Mesure | Valeur |
+|---|---|
+| Précision@5 | 0,447 |
+| MRR | 0,615 |
+| Taux de réussite (au moins un bon résultat) | 0,765 (13 questions sur 17) |
+| Fidélité des réponses (Ragas) | 0,936 |
+| Pertinence de la réponse (Ragas) | 0,500 |
+
+Le point faible mesuré est la recherche (temps, lieu, type d'événement, diversité), pas la
+rédaction. Le détail et les limites de la mesure sont dans le rapport technique.
 
 ## Installation
 
@@ -30,6 +57,8 @@ python scripts/check_env.py --online
 
 Le dernier script vérifie que tout est en place : versions, Faiss, LangChain, clé API.
 Tout doit afficher `[OK]`. Testé sur Windows 11 avec Python 3.12.10.
+
+Le fichier `.env` contient la clé et n'est jamais versionné.
 
 ## Utilisation
 
@@ -78,18 +107,30 @@ python scripts/serve.py
 ```
 
 Puis http://127.0.0.1:8000/docs pour la documentation interactive, générée par FastAPI
-depuis le code — on peut y poser une question sans écrire de client.
+depuis le code : on peut y poser une question sans écrire de client.
 
 | Appel | Ce qu'il fait |
 |---|---|
-| `GET /health` | état du service, fiche de l'index, avancement d'une reconstruction. **200** si l'index est là, **503** sinon — avec la fiche dans les deux cas |
-| `POST /ask` | une question → une réponse rédigée + les sources citées |
+| `GET /health` | état du service, fiche de l'index, avancement d'une reconstruction. **200** si l'index est là, **503** sinon, avec la fiche dans les deux cas |
+| `POST /ask` | une question, une réponse rédigée et les sources citées |
 | `POST /rebuild` | retélécharge, renettoie et reconstruit l'index (jeton `X-Rebuild-Token`) |
 
 `/rebuild` répond tout de suite (202) et travaille en arrière-plan : le nouvel index est
 construit à côté puis mis en place par un renommage. L'ancien continue donc de répondre
 pendant toute la reconstruction, et reste en place si elle échoue. Sans `REBUILD_TOKEN`
 dans `.env`, l'endpoint est désactivé.
+
+Exemple d'appel :
+
+```bash
+curl -X POST http://127.0.0.1:8000/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question": "quels concerts de musique classique à venir ?"}'
+```
+
+La réponse contient `reponse`, `sources`, `llm_disponible` et `duree_secondes`. Si Mistral
+est indisponible, `llm_disponible` vaut `false` et les événements trouvés sont renvoyés
+quand même.
 
 Pour vérifier un serveur qui tourne, depuis un autre terminal :
 
@@ -101,13 +142,16 @@ python scripts/api_test.py
 
 ```bash
 python scripts/evaluate.py --annotate     # annoter à la main ce qui est pertinent
-python scripts/evaluate.py                # noter la recherche : précision@k, rappel@k, MRR
+python scripts/evaluate.py                # noter la recherche : précision@k, MRR, taux de réussite
 python scripts/evaluate.py --ragas        # noter la rédaction : Ragas + Mistral
 ```
 
 Deux évaluations séparées, parce qu'un RAG peut se tromper à deux endroits : la recherche
 peut rater le bon événement, ou la rédaction peut trahir les fiches. La première se mesure
 sans aucun modèle, ce qui permet de la noter même quand le quota Mistral est épuisé.
+
+Les 20 questions sont dans `eval/questions.json`, les annotations humaines dans
+`eval/annotations.json`.
 
 **6. Dans Docker**
 
@@ -129,6 +173,9 @@ docker run --rm puls-events pytest    # les tests, à l'intérieur de l'image
 docker ps                             # la colonne STATUS passe à « healthy »
 ```
 
+Les tests de qualité des données sont exclus de l'image par `.dockerignore` : ils sont
+ignorés dans ce cas.
+
 ## Tests
 
 ```bash
@@ -141,22 +188,23 @@ faux modèle. Seul `test_data_quality.py` a besoin des vraies données produites
 `fetch_data.py` ; il est ignoré tant qu'elles n'existent pas.
 
 Les tests de l'API appellent l'application en mémoire, sans ouvrir de port : `TestClient` de
-FastAPI, avec un index factice de quatre événements. `scripts/api_test.py` fait l'inverse —
-un vrai serveur HTTP sur le vrai index — et sert de vérification de bout en bout.
+FastAPI, avec un index factice de quatre événements. `scripts/api_test.py` fait l'inverse :
+un vrai serveur HTTP sur le vrai index, c'est la vérification de bout en bout.
 
 ## Structure
 
 ```
-Dockerfile        image de l'API, construite en deux étapes
+Dockerfile          image de l'API, construite en deux étapes
 docker-compose.yml  le lancement en une commande
-src/rag/          config, collecte, nettoyage, découpage, embeddings, index,
-                  chaîne RAG, pipeline de rafraîchissement, API, métriques
-scripts/          check_env, fetch_data, build_index, ask, serve, api_test, evaluate
-tests/            tests unitaires + jeu de test fictif dans fixtures/
-eval/             les 20 questions d'évaluation et les annotations humaines
-data/             données et index, non versionnés (tout se reconstruit)
-docs/journal.md   mes choix, les anomalies trouvées et les corrections
-docs/commandes.md toutes les commandes, avec ce qu'elles font
+src/rag/            config, collecte, nettoyage, découpage, embeddings, index,
+                    chaîne RAG, pipeline de rafraîchissement, API, métriques
+scripts/            check_env, fetch_data, build_index, ask, serve, api_test, evaluate
+tests/              tests unitaires + jeu de test fictif dans fixtures/
+eval/               les 20 questions d'évaluation et les annotations humaines
+data/               données et index, non versionnés (tout se reconstruit)
+docs/rapport_technique.pdf  rapport technique
+docs/journal.md     mes choix, les anomalies trouvées et les corrections
+docs/commandes.md   toutes les commandes, avec ce qu'elles font
 ```
 
 Aucune règle métier ne vit dans `api.py` : il traduit du HTTP vers `chain.py` et retour.
@@ -179,17 +227,37 @@ gratuit, sans limite, et marche hors ligne pour la démo. `mistral-embed` reste 
 `EMBEDDING_PROVIDER=mistral`, pour comparer les deux. La génération des réponses, elle, passe
 bien par Mistral.
 
+**Pourquoi découper en morceaux.** Deux raisons. Un long texte noierait son sens dans un
+seul vecteur, alors qu'un morceau court garde une idée précise. Et Mistral ne reçoit que
+cinq extraits courts et ciblés, donc moins de bruit à lire. Les morceaux font 1 200
+caractères avec 150 de recouvrement, et le titre, le lieu et la date sont recopiés en tête
+de chacun.
+
 **Pourquoi un index plat.** `IndexFlatIP` sur vecteurs normalisés, donc similarité cosinus. À
 15 000 vecteurs la recherche exhaustive prend quelques millisecondes, aucune raison d'utiliser
 un index approché type IVF ou HNSW qui rate parfois des résultats. Ce serait utile à partir de
 centaines de milliers de vecteurs.
 
-**Pourquoi le MRR en plus de la précision.** Précision et rappel ne disent pas *où* le bon
-résultat apparaît. Deux recherches de précision identique n'ont pas la même valeur selon que
+**Pourquoi le MRR en plus de la précision.** La précision ne dit pas *où* le bon résultat
+apparaît. Deux recherches de précision identique n'ont pas la même valeur selon que
 l'événement pertinent sort en première ou en cinquième position, puisqu'on lit les premières
 propositions et rarement les suivantes.
 
-Le détail est dans `docs/journal.md`.
+Le détail est dans `docs/journal.md` et dans le rapport technique.
+
+## Limites connues
+
+- Le temps n'est pas compris : « ce week-end » peut renvoyer un événement de décembre. Seul
+  le filtre sur la date de fin existe.
+- Le lieu est approximatif : deux noms de villes proches ne sont pas rapprochés par la
+  distance.
+- Le type d'événement (festival, concert) n'est pas encodé.
+- Un même événement peut occuper plusieurs places dans le top 5.
+- L'évaluation porte sur 17 questions : ce sont des ordres de grandeur, et le juge Ragas est
+  instable d'une exécution à l'autre.
+
+Les pistes d'amélioration (filtres sur l'heure et la ville, dédoublonnage, recherche hybride)
+sont des hypothèses non testées, décrites dans le rapport technique.
 
 ## Problèmes courants
 
@@ -199,6 +267,7 @@ Le détail est dans `docs/journal.md`.
 | `MISTRAL_API_KEY absente` | créer `.env` à partir de `.env.example` |
 | `429 Rate limit exceeded` | quota Mistral atteint ; le système bascule en mode dégradé et liste quand même les événements trouvés |
 | `Échec de l'appel à l'API OpenAgenda` | vérifier la connexion, ou passer par `--source csv` |
+| `/health` renvoie 503 | l'index est absent : lancer `scripts/build_index.py` ou vérifier que `./data` est bien monté |
 | `test_data_quality.py` en `skipped` | normal tant que `fetch_data.py` n'a pas été lancé |
 
 ## À faire
@@ -206,4 +275,5 @@ Le détail est dans `docs/journal.md`.
 - [x] API REST FastAPI (`/ask`, `/rebuild`, `/health`) + Swagger
 - [x] Jeu de test annoté et évaluation avec Ragas
 - [x] Dockerfile et démo locale
-- [ ] Rapport technique et slides de soutenance
+- [x] Rapport technique (`docs/rapport_technique.pdf`)
+- [x] Slides de soutenance
